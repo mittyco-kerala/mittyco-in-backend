@@ -9,22 +9,22 @@ Set these values in the deployment environment or an untracked `.env` file:
 
 ```dotenv
 GOOGLE_CLIENT_ID=<Google Web application client ID>
-SITE_URL=https://eehook-frondent-web.vercel.app
-STOREFRONT_ORIGINS=https://eehook-frondent-web.vercel.app
+SITE_URL=https://your-frontend-domain.example
+STOREFRONT_ORIGINS=https://your-frontend-domain.example
 
 EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend
 EMAIL_HOST=smtp.gmail.com
 EMAIL_PORT=587
 EMAIL_USE_TLS=True
 EMAIL_USE_SSL=False
-EMAIL_HOST_USER=eehook.in@gmail.com
+EMAIL_HOST_USER=your-sender@example.com
 EMAIL_HOST_PASSWORD=<16-character Google app password>
-DEFAULT_FROM_EMAIL=eehook.in@gmail.com
+DEFAULT_FROM_EMAIL=your-sender@example.com
 ```
 
-`EMAIL_HOST_PASSWORD` must be an App Password for `eehook.in@gmail.com`, not
-the normal Google account password. Never commit it, the Google client secret,
-or the Django secret key.
+`EMAIL_HOST_PASSWORD` must be an App Password for the configured sender, not
+the normal account password. Never commit it, the Google client secret, or the
+Django secret key.
 
 For local development, also allow
 `http://localhost:5173,http://127.0.0.1:5173` in `STOREFRONT_ORIGINS` and use
@@ -55,7 +55,7 @@ Add these Authorized JavaScript origins:
 ```text
 http://localhost:5173
 http://127.0.0.1:5173
-https://eehook-frondent-web.vercel.app
+https://your-frontend-domain.example
 ```
 
 Add any real custom storefront origin only after it is known and deployed.

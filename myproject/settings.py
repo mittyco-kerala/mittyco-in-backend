@@ -253,7 +253,7 @@ if EMAIL_PROVIDER == "mailtrap":
     )
     DEFAULT_FROM_EMAIL = os.getenv(
         "MAILTRAP_FROM_EMAIL",
-        os.getenv("DEFAULT_FROM_EMAIL", "no-reply@eehook.test"),
+        os.getenv("DEFAULT_FROM_EMAIL", "no-reply@example.com"),
     ).strip()
 else:
     EMAIL_HOST = os.getenv("EMAIL_HOST", "smtp.gmail.com").strip()
@@ -264,7 +264,7 @@ else:
     EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
     DEFAULT_FROM_EMAIL = os.getenv(
         "DEFAULT_FROM_EMAIL",
-        EMAIL_HOST_USER or "no-reply@eehook.invalid",
+        EMAIL_HOST_USER or "no-reply@example.com",
     ).strip()
 
 if EMAIL_USE_TLS and EMAIL_USE_SSL:
