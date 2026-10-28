@@ -2,8 +2,8 @@ import os
 import re
 
 files_to_modify = [
-    r'd:\eehook\myapp\admin.py',
-    r'd:\eehook\myapp\serializers.py'
+    r'D:\mittyco-in-backend\myapp\admin.py',
+    r'D:\mittyco-in-backend\myapp\serializers.py'
 ]
 
 replacements = [

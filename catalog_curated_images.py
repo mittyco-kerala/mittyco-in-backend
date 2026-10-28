@@ -301,7 +301,7 @@ def main():
     args = parser.parse_args()
 
     session = requests.Session()
-    session.headers.update({"User-Agent": "EEHookCatalog/1.0"})
+    session.headers.update({"User-Agent": "MittycoCatalog/1.0"})
     variants = list(ProductVariant.objects.order_by("id"))
     variants = variants[args.start : args.start + args.limit if args.limit else None]
     prepared = []

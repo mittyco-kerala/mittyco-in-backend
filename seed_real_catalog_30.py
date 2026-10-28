@@ -49,7 +49,7 @@ def content_extension(content_type: str) -> str:
 
 def save_category_image(category_name: str, image_key: str) -> str:
     session = __import__("requests").Session()
-    session.headers.update({"User-Agent": "EEHookCatalog/1.0"})
+    session.headers.update({"User-Agent": "MittycoCatalog/1.0"})
     for url in URL_POOLS[image_key]:
         try:
             result = download(session, url)
@@ -174,12 +174,12 @@ def seed() -> None:
             [
                 "Real product photography",
                 "Quality checked before listing",
-                "Secure EEHook delivery",
+                "Secure Mittyco delivery",
             ]
         )
         product.shipping_fee = Decimal("0.00")
         product.estimated_delivery_time = "3-7 business days"
-        product.seller_name = "EEHook Marketplace"
+        product.seller_name = "Mittyco Marketplace"
         product.warranty_info = "6-month seller warranty"
         product.is_active = True
         product.emi_available = False

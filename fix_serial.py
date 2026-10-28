@@ -1,7 +1,7 @@
 import os
 import re
 
-file_path = r'd:\eehook\myapp\serializers.py'
+file_path = r'D:\mittyco-in-backend\myapp\serializers.py'
 with open(file_path, 'r', encoding='utf-8') as f:
     content = f.read()
 

@@ -93,7 +93,7 @@ class CashfreeService:
                 "return_url": return_url,
                 "notify_url": notify_url,
             },
-            "order_note": "eehook online order",
+            "order_note": "mittyco online order",
         }
         return cls._request(
             "POST",

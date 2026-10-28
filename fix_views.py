@@ -2,7 +2,7 @@ import os
 import re
 
 files_to_modify = [
-    r'd:\eehook\myapp\views.py'
+    r'D:\mittyco-in-backend\myapp\views.py'
 ]
 
 # We want to change the KEY in request.data.get("variant_unit") back to "variant_size"

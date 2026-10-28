@@ -77,7 +77,7 @@ def download_banner(key, banner):
 
     response = requests.get(
         banner["url"],
-        headers={"User-Agent": "EEHook catalog banner importer/1.0"},
+        headers={"User-Agent": "Mittyco catalog banner importer/1.0"},
         timeout=45,
     )
     response.raise_for_status()

@@ -213,8 +213,8 @@ SIMPLE_JWT = {
 # Browser JWTs stay in HttpOnly cookies.  `None` is only appropriate where
 # the storefront and API are genuinely cross-site; it requires strict CORS and
 # CSRF configuration below.  Lax is the safer default for same-site subdomains.
-JWT_ACCESS_COOKIE_NAME = "eehook_access"
-JWT_REFRESH_COOKIE_NAME = "eehook_refresh"
+JWT_ACCESS_COOKIE_NAME = "mittyco_access"
+JWT_REFRESH_COOKIE_NAME = "mittyco_refresh"
 JWT_COOKIE_DOMAIN = os.getenv("JWT_COOKIE_DOMAIN", "").strip()
 JWT_COOKIE_SAMESITE = os.getenv("JWT_COOKIE_SAMESITE", "Lax").strip().title()
 if JWT_COOKIE_SAMESITE not in {"Lax", "Strict", "None"}:

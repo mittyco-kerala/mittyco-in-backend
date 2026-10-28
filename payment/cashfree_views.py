@@ -244,7 +244,7 @@ def create_cashfree_order(request):
     except ValueError as error:
         return Response({"message": str(error)}, status=status.HTTP_400_BAD_REQUEST)
 
-    cashfree_order_id = f"eehook-{request.user.id}-{secrets.token_hex(16)}"
+    cashfree_order_id = f"mittyco-{request.user.id}-{secrets.token_hex(16)}"
     notify_url = str(
         getattr(settings, "CASHFREE_WEBHOOK_URL", "")
         or f"{settings.SITE_URL}/backend/payment/cashfree-webhook/"

@@ -426,7 +426,7 @@ def update_product(product, product_data, image_name, black, white):
     product.key_features = "\n".join(product_data["features"])
     product.shipping_fee = 0
     product.estimated_delivery_time = product_data["delivery"]
-    product.seller_name = "EEHook Marketplace"
+    product.seller_name = "Mittyco Marketplace"
     product.warranty_info = product_data["warranty"]
     product.emi_available = product_data["emi"]
     product.emi_starting_price = product_data["emi_starting_price"]

@@ -35,7 +35,7 @@ from myapp.models import (
 )
 
 
-IMPORT_MARKER = "EEHook curated catalog 2026-10"
+IMPORT_MARKER = "Mittyco curated catalog 2026-10"
 SOURCE_DIRECTORY = Path(settings.MEDIA_ROOT) / "products" / "curated" / "source"
 
 

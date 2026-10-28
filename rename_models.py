@@ -2,7 +2,7 @@ import os
 import re
 
 files_to_modify = [
-    r'd:\eehook\myapp\models.py',
+    r'D:\mittyco-in-backend\myapp\models.py',
 ]
 
 replacements = [

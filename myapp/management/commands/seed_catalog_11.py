@@ -1,4 +1,4 @@
-"""Safely expand the EEHook demo catalog to eleven categories.
+"""Safely expand the Mittyco demo catalog to eleven categories.
 
 The command is intentionally guarded. It only creates or refreshes records
 identified by the existing demo seller marker, never deletes records, and
@@ -96,7 +96,7 @@ def content_extension(content_type):
 
 
 class Command(BaseCommand):
-    help = "Expand the idempotent EEHook demo catalog to eleven categories and 52 products."
+    help = "Expand the idempotent Mittyco demo catalog to eleven categories and 52 products."
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -233,7 +233,7 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         self._validate_sources()
         session = requests.Session()
-        session.headers.update({"User-Agent": "EEHookDemoCatalog/1.0"})
+        session.headers.update({"User-Agent": "MittycoDemoCatalog/1.0"})
         if not options["apply"]:
             self.stdout.write(self.style.SUCCESS("Validated 11 categories, 52 products, and image source mappings. No database changes made."))
             return

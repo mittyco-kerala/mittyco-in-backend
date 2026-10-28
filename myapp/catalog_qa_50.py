@@ -3,7 +3,7 @@
 from django.utils.text import slugify
 
 
-IMPORT_MARKER = "EEHook catalog import 2026-10"
+IMPORT_MARKER = "Mittyco catalog import 2026-10"
 IMAGE_DIRECTORY = "products/catalog_2026_10"
 
 COLOR_CODES = {
