@@ -260,6 +260,9 @@ class AdminProductVariantSerializer(serializers.ModelSerializer):
 
         price_type = attrs.get("price_type", getattr(self.instance, "price_type", "single"))
         price = attrs.get("price", getattr(self.instance, "price", None))
+        if price_type == "multiple" and self.instance is not None and "price" not in attrs:
+            attrs["price"] = None
+            price = None
         if price_type == "single" and price is None:
             raise serializers.ValidationError(
                 {"price": "A single-price variant requires a price."}
