@@ -1797,13 +1797,24 @@ from .order_notifications import send_order_notifications
 @permission_classes([IsAuthenticated])
 @transaction.atomic
 def place_order(request):
+    # Legacy direct-order endpoint retained for historical routes. New orders
+    # must go through payment/create-razorpay-order/ and verification.
 
     payment_method = str(request.data.get("payment_method") or "").strip().upper()
-    if payment_method not in {"COD", "WHATSAPP"}:
+    if payment_method in {"COD", "WHATSAPP"}:
         return Response(
-            {"message": "Choose Cash on Delivery or WhatsApp."},
+            {"message": "Cash on Delivery and WhatsApp orders are no longer available. Use Razorpay."},
+            status=status.HTTP_410_GONE,
+        )
+    if payment_method != "RAZORPAY":
+        return Response(
+            {"message": "Use the Razorpay payment checkout."},
             status=status.HTTP_400_BAD_REQUEST,
         )
+    return Response(
+        {"message": "Direct order creation is disabled. Use the Razorpay payment checkout."},
+        status=status.HTTP_410_GONE,
+    )
 
     address_id = request.data.get(
         "address"
