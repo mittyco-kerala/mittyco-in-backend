@@ -269,17 +269,6 @@ class AdminProductVariantSerializer(serializers.ModelSerializer):
                 {"price": "A multiple-price variant must store prices on its units."}
             )
 
-        product = attrs.get("product", getattr(self.instance, "product", None))
-        color = attrs.get("color", getattr(self.instance, "color", None))
-        if product and color is None:
-            duplicate = ProductVariant.objects.filter(
-                product=product,
-                color__isnull=True,
-            ).exclude(pk=getattr(self.instance, "pk", None)).exists()
-            if duplicate:
-                raise serializers.ValidationError(
-                    {"color": "A product can have only one no-color variant."}
-                )
         return attrs
 
     def create(self, validated_data):

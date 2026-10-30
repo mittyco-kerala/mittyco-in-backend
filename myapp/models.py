@@ -569,15 +569,6 @@ class ProductVariant(models.Model):
 
     def clean(self):
         super().clean()
-        if self.product_id and self.color_id is None:
-            duplicate = ProductVariant.objects.filter(
-                product_id=self.product_id,
-                color__isnull=True,
-            ).exclude(pk=self.pk).exists()
-            if duplicate:
-                raise ValidationError(
-                    {"color": "A product can have only one no-color variant."}
-                )
         if self.price_type == "single" and self.price is None:
             raise ValidationError({"price": "A single-price variant requires a price."})
         if self.price_type == "multiple" and self.price is not None:
