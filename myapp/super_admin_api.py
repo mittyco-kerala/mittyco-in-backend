@@ -252,7 +252,17 @@ class AdminProductVariantSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ProductVariant
-        fields = ("id", "product", "color", "sku", "price_type", "price", "stock", "generate_sku")
+        fields = (
+            "id",
+            "product",
+            "color",
+            "sku",
+            "price_type",
+            "price",
+            "stock",
+            "shipping_weight_grams",
+            "generate_sku",
+        )
         read_only_fields = ("id",)
 
     def validate(self, attrs):
@@ -310,7 +320,17 @@ class AdminProductVariantUnitSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ProductVariantUnit
-        fields = ("id", "variant", "unit_type", "unit", "sku", "price", "stock", "generate_sku")
+        fields = (
+            "id",
+            "variant",
+            "unit_type",
+            "unit",
+            "sku",
+            "price",
+            "stock",
+            "shipping_weight_grams",
+            "generate_sku",
+        )
         read_only_fields = ("id",)
 
     def validate(self, attrs):
@@ -683,6 +703,7 @@ class AdminProductViewSet(AdminModelViewSet):
                     price_type=source_variant.price_type,
                     price=source_variant.price,
                     stock=source_variant.stock,
+                    shipping_weight_grams=source_variant.shipping_weight_grams,
                 )
                 variant.regions.set(source_variant.regions.all())
 
@@ -696,6 +717,7 @@ class AdminProductViewSet(AdminModelViewSet):
                         unit=source_unit.unit,
                         price=source_unit.price,
                         stock=source_unit.stock,
+                        shipping_weight_grams=source_unit.shipping_weight_grams,
                     )
 
                 copied_images = []

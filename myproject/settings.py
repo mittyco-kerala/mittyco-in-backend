@@ -390,6 +390,26 @@ RAZORPAY_KEY_ID = os.getenv("RAZORPAY_KEY_ID", "").strip()
 RAZORPAY_KEY_SECRET = os.getenv("RAZORPAY_KEY_SECRET", "").strip()
 RAZORPAY_ORDER_CURRENCY = os.getenv("RAZORPAY_ORDER_CURRENCY", "INR").strip().upper()
 
+# India Post retail parcel shipping.  The rate table is implemented from the
+# published tariff; the optional pincode endpoint is used only for state
+# detection and requires the server IP to be whitelisted by India Post.
+INDIA_POST_ORIGIN_PINCODE = os.getenv("INDIA_POST_ORIGIN_PINCODE", "").strip()
+INDIA_POST_ORIGIN_STATE = os.getenv("INDIA_POST_ORIGIN_STATE", "").strip()
+INDIA_POST_PINCODE_API_URL = os.getenv(
+    "INDIA_POST_PINCODE_API_URL",
+    "https://api.cept.gov.in/CommonFacilityMaster/api/values/Pincode",
+).strip()
+INDIA_POST_PINCODE_API_REQUIRED = os.getenv(
+    "INDIA_POST_PINCODE_API_REQUIRED", "false"
+).strip().lower() in {"1", "true", "yes", "on"}
+INDIA_POST_DEFAULT_ITEM_WEIGHT_GRAMS = int(
+    os.getenv("INDIA_POST_DEFAULT_ITEM_WEIGHT_GRAMS", "500")
+)
+INDIA_POST_GST_RATE = os.getenv("INDIA_POST_GST_RATE", "0").strip()
+INDIA_POST_ESTIMATED_DELIVERY = os.getenv(
+    "INDIA_POST_ESTIMATED_DELIVERY", "4-5 business days"
+).strip()
+
 # Legacy Stripe settings remain available for historical checkout records.
 
 STRIPE_PUBLISHABLE_KEY = os.getenv("STRIPE_PUBLISHABLE_KEY")

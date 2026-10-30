@@ -563,6 +563,11 @@ class ProductVariant(models.Model):
     price_type = models.CharField(max_length=20, choices=PRICE_TYPE_CHOICES, default="single")
     price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True, help_text="For single price")
     stock = models.PositiveIntegerField(default=0, help_text="For single price")
+    shipping_weight_grams = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text="Packed shipping weight for a single-price variant, in grams.",
+    )
 
     class Meta:
         unique_together = (
@@ -600,6 +605,11 @@ class ProductVariantUnit(models.Model):
     sku = models.CharField(max_length=100, unique=True, null=True, blank=True)
     price = models.DecimalField( max_digits=10,decimal_places=2)
     stock = models.PositiveIntegerField( default=0)
+    shipping_weight_grams = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text="Packed shipping weight for this unit, in grams.",
+    )
 
     class Meta:
         unique_together = (

@@ -34,6 +34,7 @@ from myapp.utils import (
     get_eligible_coupon,
     get_applicable_offer,
 )
+from myapp.shipping import calculate_cart_shipping
 from myapp.welcome_bonus import (
     calculate_welcome_bonus_price,
     get_eligible_welcome_bonus_assignment,
@@ -79,7 +80,7 @@ def _customer_name(user, address):
     )[:100]
 
 
-def _snapshot_from_cart(user):
+def _snapshot_from_cart(user, address=None):
     cart_items = list(
         Cart.objects.filter(user=user).select_related(
             "variant",
@@ -177,7 +178,11 @@ def _snapshot_from_cart(user):
             }
         )
 
-    totals = calculate_order_total(discounted_subtotal)
+    shipping_quote = calculate_cart_shipping(cart_items, address) if address else None
+    totals = calculate_order_total(
+        discounted_subtotal,
+        shipping_charge=shipping_quote["amount"] if shipping_quote else None,
+    )
     return {
         "products": products,
         "original_subtotal": str(_money(original_subtotal)),
@@ -185,6 +190,7 @@ def _snapshot_from_cart(user):
         "discounted_subtotal": str(_money(discounted_subtotal)),
         "shipping_charge": str(_money(totals["shipping"])),
         "total": str(_money(totals["total"])),
+        "shipping_quote": shipping_quote or {},
     }
 
 
@@ -238,7 +244,7 @@ def create_cashfree_order(request):
 
     try:
         currency = _cashfree_currency()
-        snapshot = _snapshot_from_cart(request.user)
+        snapshot = _snapshot_from_cart(request.user, address=address)
         amount = _money(snapshot["total"])
         if amount <= 0:
             raise ValueError("The order total must be greater than zero.")

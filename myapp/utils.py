@@ -201,13 +201,14 @@ def calculate_shipping(subtotal):
     return Decimal("15")
 
 
-def calculate_order_total(subtotal):
+def calculate_order_total(subtotal, shipping_charge=None):
 
     subtotal = Decimal(str(subtotal))
 
-    shipping_charge = calculate_shipping(
-        subtotal
-    )
+    if shipping_charge is None:
+        shipping_charge = calculate_shipping(subtotal)
+    else:
+        shipping_charge = max(Decimal(str(shipping_charge)), Decimal("0.00"))
 
     total = subtotal + shipping_charge
 

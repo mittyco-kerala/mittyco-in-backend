@@ -86,7 +86,7 @@ def create_razorpay_order(request):
 
     try:
         currency = _razorpay_currency()
-        snapshot = _snapshot_from_cart(request.user)
+        snapshot = _snapshot_from_cart(request.user, address=address)
         amount = _money(snapshot["total"])
         amount_in_paise = _amount_in_paise(amount)
     except ValueError as error:

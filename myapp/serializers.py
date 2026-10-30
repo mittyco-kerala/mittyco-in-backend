@@ -251,6 +251,7 @@ class ProductVariantUnitSerializer(
             "discount_value",
             "fixed_amount",
             "stock",
+            "shipping_weight_grams",
         ]
 
     def get_discounted_price(
@@ -354,7 +355,8 @@ class ProductVariantSerializer(serializers.ModelSerializer):
             "discount_type",
             "discount_value",
             "fixed_amount",
-            "stock"
+            "stock",
+            "shipping_weight_grams",
         ]
 
     def get_discounted_price(self, obj):
