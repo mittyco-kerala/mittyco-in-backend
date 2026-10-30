@@ -2509,6 +2509,8 @@ def my_orders(request):
 
     orders = Order.objects.filter(
         user=request.user
+    ).select_related(
+        "invoice",
     ).order_by(
         "-created_at"
     )
@@ -2578,9 +2580,8 @@ def order_details(request, id):
     if error:
         return error
 
-    serializer = OrderSerializer(
-        order
-    )
+    order = Order.objects.select_related("invoice").get(pk=order.pk)
+    serializer = OrderSerializer(order)
 
     return Response(
         serializer.data
@@ -2772,7 +2773,8 @@ def legacy_admin_order_details(request, id):
 
         order = Order.objects.select_related(
             "user",
-            "address"
+            "address",
+            "invoice",
         ).prefetch_related(
             "items"
         ).get(
@@ -3133,7 +3135,8 @@ def admin_order_details(request, id):
 
         order = Order.objects.select_related(
             "user",
-            "address"
+            "address",
+            "invoice",
         ).prefetch_related(
             "items__product",
             "items__color",

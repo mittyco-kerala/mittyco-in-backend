@@ -882,6 +882,109 @@ class OrderItemSerializer(
             return image.image.url
 
         return None
+
+
+class InvoiceSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Invoice
+        fields = ("id", "invoice_number", "issued_at")
+        read_only_fields = fields
+
+
+class PackagingSlipOrderSerializer(serializers.ModelSerializer):
+    order_number = serializers.SerializerMethodField()
+    customer_name = serializers.CharField(source="user.first_name", read_only=True)
+    customer_email = serializers.EmailField(source="user.email", read_only=True)
+    address_name = serializers.CharField(source="address.full_name", read_only=True)
+    address_phone = serializers.CharField(source="address.phone", read_only=True)
+    address_line = serializers.CharField(source="address.address_line", read_only=True)
+    city = serializers.CharField(source="address.city", read_only=True)
+    postcode = serializers.CharField(source="address.postal_code", read_only=True)
+    country = serializers.CharField(source="address.country", read_only=True)
+
+    class Meta:
+        model = Order
+        fields = (
+            "id",
+            "order_number",
+            "customer_name",
+            "customer_email",
+            "address_name",
+            "address_phone",
+            "address_line",
+            "city",
+            "postcode",
+            "country",
+        )
+        read_only_fields = fields
+
+    def get_order_number(self, obj):
+        return f"ORD-{obj.pk:06d}"
+
+
+class PackagingSlipItemSerializer(serializers.ModelSerializer):
+    order_id = serializers.IntegerField(source="order_item.order_id", read_only=True)
+    order_number = serializers.SerializerMethodField()
+    product_name = serializers.CharField(source="order_item.product.name", read_only=True)
+    product_image = serializers.SerializerMethodField()
+    color = serializers.CharField(source="order_item.color.name", read_only=True)
+    size = serializers.CharField(source="order_item.unit.name", read_only=True)
+    unit_type = serializers.CharField(source="order_item.unit.unit_type.name", read_only=True)
+    sku = serializers.SerializerMethodField()
+    quantity = serializers.IntegerField(source="order_item.quantity", read_only=True)
+
+    class Meta:
+        model = PackagingSlipItem
+        fields = (
+            "id",
+            "barcode",
+            "order_id",
+            "order_number",
+            "product_name",
+            "product_image",
+            "color",
+            "unit_type",
+            "size",
+            "sku",
+            "quantity",
+        )
+        read_only_fields = fields
+
+    def _variant(self, obj):
+        order_item = obj.order_item
+        if order_item.variant_unit_id:
+            return order_item.variant_unit.variant
+        if order_item.color_id:
+            return order_item.product.variants.filter(color_id=order_item.color_id).first()
+        return order_item.product.variants.first()
+
+    def get_order_number(self, obj):
+        return f"ORD-{obj.order_item.order_id:06d}"
+
+    def get_product_image(self, obj):
+        variant = self._variant(obj)
+        if not variant:
+            return None
+        image = variant.images.filter(is_primary=True).first() or variant.images.first()
+        return image.image.url if image and image.image else None
+
+    def get_sku(self, obj):
+        variant = self._variant(obj)
+        if obj.order_item.variant_unit_id and obj.order_item.variant_unit.sku:
+            return obj.order_item.variant_unit.sku
+        return variant.sku if variant else None
+
+
+class PackagingSlipSerializer(serializers.ModelSerializer):
+    orders = PackagingSlipOrderSerializer(many=True, read_only=True)
+    items = PackagingSlipItemSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = PackagingSlip
+        fields = ("id", "slip_number", "created_at", "orders", "items")
+        read_only_fields = fields
+
+
 class WelcomeBonusRedemptionSummarySerializer(serializers.ModelSerializer):
     welcome_bonus_name = serializers.CharField(source="welcome_bonus.name", read_only=True)
 
@@ -957,6 +1060,8 @@ class OrderSerializer(
         read_only=True,
     )
 
+    invoice = InvoiceSerializer(read_only=True, allow_null=True)
+
     class Meta:
 
         model = Order
@@ -1002,6 +1107,8 @@ class OrderSerializer(
             "cancelled_at",
 
             "items",
+
+            "invoice",
 
             "welcome_bonus_redemptions",
 
@@ -1642,6 +1749,8 @@ class MyOrderSerializer(
 
     total_items = serializers.SerializerMethodField()
 
+    invoice = InvoiceSerializer(read_only=True, allow_null=True)
+
     class Meta:
 
         model = Order
@@ -1661,6 +1770,8 @@ class MyOrderSerializer(
             "total_items",
 
             "items",
+
+            "invoice",
 
         ]
 

@@ -72,7 +72,7 @@ class SuperAdminOrderListView(generics.ListAPIView):
         params = query.validated_data
 
         orders = (
-            Order.objects.select_related("user", "address")
+            Order.objects.select_related("user", "address", "invoice")
             .prefetch_related("items__product", "items__color", "items__unit")
             .all()
         )
@@ -105,7 +105,7 @@ class SuperAdminOrderListView(generics.ListAPIView):
 
 class SuperAdminOrderDetailView(generics.RetrieveUpdateDestroyAPIView):
     permission_classes = (IsSuperAdmin,)
-    queryset = Order.objects.select_related("user", "address").prefetch_related(
+    queryset = Order.objects.select_related("user", "address", "invoice").prefetch_related(
         "items__product", "items__color", "items__unit"
     )
     lookup_url_kwarg = "id"

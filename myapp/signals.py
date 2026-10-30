@@ -3,7 +3,7 @@
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 
-from .models import User, WelcomeBonus
+from .models import Invoice, Order, User, WelcomeBonus
 from .welcome_bonus import (
     assign_active_welcome_bonuses_to_user,
     assign_welcome_bonus_to_existing_users,
@@ -20,3 +20,15 @@ def assign_new_welcome_bonus(sender, instance, created, **kwargs):
 def assign_campaigns_to_new_customer(sender, instance, created, **kwargs):
     if created:
         assign_active_welcome_bonuses_to_user(instance)
+
+
+@receiver(post_save, sender=Order)
+def issue_invoice_for_paid_order(sender, instance, **kwargs):
+    """Issue one invoice whenever an order is paid, without duplicates."""
+
+    if instance.payment_status != "Paid":
+        return
+    Invoice.objects.get_or_create(
+        order=instance,
+        defaults={"invoice_number": f"INV-{instance.pk:06d}"},
+    )

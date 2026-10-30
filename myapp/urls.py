@@ -122,6 +122,7 @@ path(
 
 from rest_framework.routers import DefaultRouter
 from .order_admin_api import SuperAdminOrderDetailView, SuperAdminOrderListView
+from .packaging_api import create_packaging_slip
 from .super_admin_api import (
     AdminAddressViewSet,
     AdminBrandViewSet,
@@ -199,5 +200,10 @@ urlpatterns += [
         "orders/<int:id>/",
         SuperAdminOrderDetailView.as_view(),
         name="admin-order-detail-api",
+    ),
+    path(
+        "admin/packaging-slips/",
+        create_packaging_slip,
+        name="admin-packaging-slip-create",
     ),
 ]

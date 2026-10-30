@@ -1,8 +1,11 @@
+import secrets
+
 from django.db import models, transaction
 from django.contrib.auth.models import ( AbstractUser, BaseUserManager)
 from django.core.exceptions import ValidationError
 from django.core.validators import MaxValueValidator, MinValueValidator, RegexValidator
 from django.utils.text import slugify
+from django.utils import timezone
 
 
 class UserManager(BaseUserManager):
@@ -927,6 +930,73 @@ class Order(models.Model):
         return f"ORD-{self.id:06d}"
 
 
+class Invoice(models.Model):
+    """The invoice header issued for a paid order.
+
+    Line items are intentionally read from the order snapshot. That keeps one
+    source of truth for products, quantities, prices, and totals in both
+    customer and admin invoice views.
+    """
+
+    order = models.OneToOneField(
+        Order,
+        on_delete=models.CASCADE,
+        related_name="invoice",
+    )
+    invoice_number = models.CharField(max_length=32, unique=True)
+    issued_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ("-issued_at", "-id")
+
+    def __str__(self):
+        return self.invoice_number
+
+
+class PackagingSlip(models.Model):
+    """A server-generated fulfilment slip for one or more orders."""
+
+    slip_number = models.CharField(max_length=32, unique=True, editable=False)
+    order_set_key = models.CharField(
+        max_length=512,
+        unique=True,
+        null=True,
+        blank=True,
+        editable=False,
+    )
+    orders = models.ManyToManyField(
+        Order,
+        related_name="packaging_slips",
+        blank=True,
+    )
+    created_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="created_packaging_slips",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ("-created_at", "-id")
+
+    def save(self, *args, **kwargs):
+        if not self.slip_number:
+            while True:
+                candidate = (
+                    f"PKG-{timezone.now():%Y%m%d}-"
+                    f"{secrets.token_hex(4).upper()}"
+                )
+                if not type(self).objects.filter(slip_number=candidate).exists():
+                    self.slip_number = candidate
+                    break
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return self.slip_number
+
+
 class AdminAuditLog(models.Model):
     admin_user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
     action = models.CharField(max_length=50)
@@ -1001,6 +1071,40 @@ class OrderItem(models.Model):
 
     def __str__(self):
         return self.product.name
+
+
+class PackagingSlipItem(models.Model):
+    """One independently scannable product line on a packaging slip."""
+
+    slip = models.ForeignKey(
+        PackagingSlip,
+        on_delete=models.CASCADE,
+        related_name="items",
+    )
+    order_item = models.ForeignKey(
+        OrderItem,
+        on_delete=models.CASCADE,
+        related_name="packaging_slip_items",
+    )
+    barcode = models.CharField(max_length=64, unique=True, editable=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=("slip", "order_item"),
+                name="myapp_packaging_slip_order_item_unique",
+            ),
+        ]
+        ordering = ("id",)
+
+    def save(self, *args, **kwargs):
+        if not self.barcode:
+            self.barcode = f"{self.slip.slip_number}-ITEM-{self.order_item_id:06d}"
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return self.barcode
     
 class HeroBanner(models.Model):
 
