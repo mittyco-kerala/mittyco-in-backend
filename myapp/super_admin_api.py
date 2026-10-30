@@ -473,15 +473,47 @@ class AdminSubCategoryViewSet(AdminModelViewSet):
 
 
 class AdminOfferViewSet(AdminModelViewSet):
-    queryset = Offer.objects.all().order_by("-created_at")
-    search_fields = ("title", "description")
+    queryset = Offer.objects.select_related("product", "variant", "variant__color").all().order_by("-created_at")
+    search_fields = ("title", "description", "product__name", "variant__sku", "variant__color__name")
 
     def get_serializer_class(self):
         class OfferAdminSerializer(serializers.ModelSerializer):
+            product = serializers.PrimaryKeyRelatedField(
+                queryset=Product.objects.filter(is_active=True),
+                required=True,
+            )
+            variant = serializers.PrimaryKeyRelatedField(
+                queryset=ProductVariant.objects.select_related("product"),
+                required=False,
+                allow_null=True,
+            )
+
             class Meta:
                 model = Offer
                 fields = "__all__"
                 read_only_fields = ("id", "created_at")
+
+            def validate(self, attrs):
+                product = attrs.get("product", getattr(self.instance, "product", None))
+                variant = attrs.get("variant", getattr(self.instance, "variant", None))
+                if not product:
+                    raise serializers.ValidationError({"product": "Select a product for this offer."})
+                if variant and variant.product_id != product.id:
+                    raise serializers.ValidationError({"variant": "The selected variant must belong to the selected product."})
+                return attrs
+
+            def create(self, validated_data):
+                instance = Offer(**validated_data)
+                instance.full_clean()
+                instance.save()
+                return instance
+
+            def update(self, instance, validated_data):
+                for field, value in validated_data.items():
+                    setattr(instance, field, value)
+                instance.full_clean()
+                instance.save()
+                return instance
 
         return OfferAdminSerializer
 

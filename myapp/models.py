@@ -106,14 +106,74 @@ class Brand(models.Model):
 
 class Offer(models.Model):
 
+    DISCOUNT_PERCENTAGE = "PERCENTAGE"
+    DISCOUNT_FIXED = "FIXED"
+    DISCOUNT_TYPE_CHOICES = (
+        (DISCOUNT_PERCENTAGE, "Percentage"),
+        (DISCOUNT_FIXED, "Fixed Amount"),
+    )
+
     title = models.CharField(max_length=200 )
     description = models.TextField()
     image = models.ImageField( upload_to="offers/")
-    discount_percentage = models.PositiveIntegerField()
+    # New offers are attached from the Offers screen.  The nullable product
+    # relation keeps older product-linked records valid during migration.
+    product = models.ForeignKey(
+        "Product",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="campaign_offers",
+        related_query_name="campaign_offers",
+    )
+    variant = models.ForeignKey(
+        "ProductVariant",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="campaign_offers",
+    )
+    discount_type = models.CharField(
+        max_length=20,
+        choices=DISCOUNT_TYPE_CHOICES,
+        default=DISCOUNT_PERCENTAGE,
+    )
+    discount_percentage = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        null=True,
+        blank=True,
+    )
+    fixed_amount = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+    )
     start_date = models.DateField()
     end_date = models.DateField()
     is_active = models.BooleanField( default=True)
     created_at = models.DateTimeField( auto_now_add=True)
+
+    def clean(self):
+        super().clean()
+        errors = {}
+        if self.product_id and self.variant_id and self.variant.product_id != self.product_id:
+            errors["variant"] = "The selected variant must belong to the selected product."
+        if self.discount_type == self.DISCOUNT_PERCENTAGE:
+            if self.discount_percentage is None or not (0 < self.discount_percentage <= 100):
+                errors["discount_percentage"] = "Percentage must be greater than 0 and at most 100."
+            if self.fixed_amount is not None:
+                errors["fixed_amount"] = "Fixed amount must be empty for a percentage offer."
+        elif self.discount_type == self.DISCOUNT_FIXED:
+            if self.fixed_amount is None or self.fixed_amount <= 0:
+                errors["fixed_amount"] = "Fixed amount must be greater than 0."
+            if self.discount_percentage is not None:
+                errors["discount_percentage"] = "Percentage must be empty for a fixed amount offer."
+        else:
+            errors["discount_type"] = "Select Percentage or Fixed Amount."
+        if errors:
+            raise ValidationError(errors)
 
     def __str__(self):
         return self.title
@@ -185,7 +245,14 @@ class Product(models.Model):
         blank=True,
         related_name="products",
     )
-    offer = models.ForeignKey( Offer, on_delete=models.SET_NULL, null=True, blank=True)
+    offer = models.ForeignKey(
+        Offer,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="legacy_product_links",
+        related_query_name="legacy_product_link",
+    )
     name = models.CharField( max_length=200 )
     description = models.TextField()
     is_active = models.BooleanField(default=True)

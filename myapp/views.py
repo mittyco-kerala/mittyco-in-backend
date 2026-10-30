@@ -67,7 +67,7 @@ import csv
 
 import logging
 from google.auth.exceptions import GoogleAuthError
-from .utils import AuthRateThrottle, SearchRateThrottle
+from .utils import AuthRateThrottle, SearchRateThrottle, get_applicable_offer
 from .auth_cookies import clear_auth_cookies, set_auth_cookies
 from .authentication import enforce_csrf
 from .welcome_bonus import (
@@ -790,9 +790,16 @@ def _top_deal_products():
     return (
         _homepage_product_queryset()
         .filter(
-            offer__is_active=True,
-            offer__start_date__lte=today,
-            offer__end_date__gte=today,
+            Q(
+                offer__is_active=True,
+                offer__start_date__lte=today,
+                offer__end_date__gte=today,
+            )
+            | Q(
+                campaign_offers__is_active=True,
+                campaign_offers__start_date__lte=today,
+                campaign_offers__end_date__gte=today,
+            ),
         )
         .annotate(_catalog_price=_catalog_price_expression())
         .order_by("-offer__discount_percentage", "_catalog_price", "-updated_at", "-id")[
@@ -1616,7 +1623,7 @@ def get_cart(request):
         price = (item.variant.price or 0) if item.variant.price_type == "single" else ((item.variant_unit.price or 0) if item.variant_unit else 0)
         discounted_price = calculate_offer_price(
             price,
-            item.variant.product.offer
+            get_applicable_offer(item.variant.product, item.variant),
         )
         source, promotion = current_promotions.get(item.id, (None, None))
         if promotion:
@@ -1708,7 +1715,7 @@ def update_cart_quantity(request, id):
     )
     discounted_price = calculate_offer_price(
         original_price or 0,
-        cart.variant.product.offer
+        get_applicable_offer(cart.variant.product, cart.variant),
     )
     if current_promotion:
         discounted_price = _apply_cart_promotion_price(
@@ -1746,7 +1753,7 @@ def update_cart_quantity(request, id):
         )
         item_discounted_price = calculate_offer_price(
             item_price or 0,
-            item.variant.product.offer,
+            get_applicable_offer(item.variant.product, item.variant),
         )
         if item_promotion:
             item_discounted_price = _apply_cart_promotion_price(
@@ -1919,7 +1926,7 @@ def place_order(request):
 
         discounted_price = calculate_offer_price(
             original_price,
-            item.variant.product.offer
+            get_applicable_offer(item.variant.product, item.variant),
         )
         promotion_source, current_promotion = _refresh_cart_promotion(item)
         if current_promotion:
@@ -1983,7 +1990,7 @@ def place_order(request):
 
         discounted_price = calculate_offer_price(
             original_price,
-            item.variant.product.offer
+            get_applicable_offer(item.variant.product, item.variant),
         )
         promotion_source, current_promotion = _refresh_cart_promotion(item)
         if current_promotion:
@@ -2116,7 +2123,7 @@ def get_offers(request):
 
     today = timezone.now().date()
 
-    offers = Offer.objects.filter(
+    offers = Offer.objects.select_related("product", "variant", "variant__color").filter(
 
         is_active=True,
 
@@ -2140,7 +2147,7 @@ def offer_products(request):
 
     today = timezone.now().date()
 
-    offer = Offer.objects.filter(
+    offer = Offer.objects.select_related("product", "variant").filter(
 
         is_active=True,
 
@@ -2155,8 +2162,8 @@ def offer_products(request):
         return Response([])
 
     products = Product.objects.filter(
-        offer=offer
-    )
+        Q(offer=offer) | Q(campaign_offers=offer)
+    ).distinct()
 
     serializer = ProductSerializer(
         products,
@@ -2178,8 +2185,14 @@ def offer_products(request):
             if offer.image
             else None,
 
-            "discount":
-            offer.discount_percentage
+            "discount_type": offer.discount_type,
+            "discount_value": (
+                offer.fixed_amount
+                if offer.discount_type == "FIXED"
+                else offer.discount_percentage
+            ),
+            "discount_percentage": offer.discount_percentage,
+            "fixed_amount": offer.fixed_amount,
 
         },
 
@@ -2295,9 +2308,18 @@ def search_products(request):
             )
 
         if offer == "true":
-
+            today = timezone.localdate()
             products = products.filter(
-                offer__isnull=False
+                Q(
+                    offer__is_active=True,
+                    offer__start_date__lte=today,
+                    offer__end_date__gte=today,
+                )
+                | Q(
+                    campaign_offers__is_active=True,
+                    campaign_offers__start_date__lte=today,
+                    campaign_offers__end_date__gte=today,
+                )
             )
 
         if new_arrival == "true":

@@ -97,20 +97,62 @@ def is_offer_valid(offer):
     )
 
 
+def get_applicable_offer(product, variant=None):
+    """Return the active offer for a variant, then product, then legacy FK.
+
+    Product.offer is retained for old catalog records. New dashboard offers
+    use Offer.product and optionally Offer.variant, with the variant-specific
+    record taking precedence.
+    """
+    if not product:
+        return None
+
+    from .models import Offer
+
+    today = timezone.now().date()
+    active = {
+        "is_active": True,
+        "start_date__lte": today,
+        "end_date__gte": today,
+    }
+    if variant and getattr(variant, "pk", None):
+        variant_offer = (
+            Offer.objects.filter(variant_id=variant.pk, **active)
+            .order_by("-created_at", "-id")
+            .first()
+        )
+        if variant_offer:
+            return variant_offer
+
+    product_offer = (
+        Offer.objects.filter(product_id=product.pk, variant__isnull=True, **active)
+        .order_by("-created_at", "-id")
+        .first()
+    )
+    if product_offer:
+        return product_offer
+
+    legacy_offer = getattr(product, "offer", None)
+    return legacy_offer if is_offer_valid(legacy_offer) else None
+
+
+def calculate_offer_discount_amount(price, offer):
+    price = max(Decimal(str(price or 0)), Decimal("0.00"))
+    if not is_offer_valid(offer):
+        return Decimal("0.00")
+
+    if offer.discount_type == "FIXED":
+        requested = offer.fixed_amount or Decimal("0.00")
+    else:
+        requested = price * (offer.discount_percentage or Decimal("0.00")) / Decimal("100")
+
+    return min(max(requested, Decimal("0.00")), price).quantize(Decimal("0.01"))
+
+
 def calculate_offer_price(price, offer):
 
-    price = Decimal(str(price))
-
-    if not is_offer_valid(offer):
-        return price
-
-    discount = (
-        price *
-        Decimal(str(offer.discount_percentage))
-        / Decimal("100")
-    )
-
-    discounted_price = price - discount
+    price = max(Decimal(str(price or 0)), Decimal("0.00"))
+    discounted_price = price - calculate_offer_discount_amount(price, offer)
 
     return discounted_price.quantize(
         Decimal("0.01")
@@ -183,9 +225,17 @@ def calculate_order_total(subtotal):
     
 def get_product_prices(product):
 
-    prices = get_product_price_values(product)
+    choices = []
+    for variant in product.variants.all():
+        if variant.price_type == "single":
+            if variant.price is not None:
+                choices.append((Decimal(str(variant.price)), variant))
+        else:
+            for unit in variant.sizes.all():
+                if unit.price is not None:
+                    choices.append((Decimal(str(unit.price)), variant))
 
-    if not prices:
+    if not choices:
 
         zero = Decimal("0.00")
 
@@ -195,31 +245,29 @@ def get_product_prices(product):
             "discount_amount": zero,
             "has_offer": False,
             "discount_percentage": 0,
+            "discount_type": None,
+            "discount_value": None,
+            "fixed_amount": None,
         }
 
-    starting_price = min(prices)
+    priced_choices = []
+    for original_price, variant in choices:
+        offer = get_applicable_offer(product, variant)
+        discounted = calculate_offer_price(original_price, offer)
+        priced_choices.append((discounted, original_price, offer))
 
-    discounted_price = calculate_offer_price(
-        starting_price,
-        product.offer
+    discounted_price, starting_price, offer = min(
+        priced_choices,
+        key=lambda item: (item[0], item[1]),
     )
-
-    discount_amount = calculate_discount_amount(
-        starting_price,
-        product.offer
+    discount_amount = (starting_price - discounted_price).quantize(Decimal("0.01"))
+    has_offer = bool(offer and discount_amount > 0)
+    discount_percentage = offer.discount_percentage if has_offer and offer.discount_type == "PERCENTAGE" else 0
+    discount_type = offer.discount_type if has_offer else None
+    discount_value = (
+        offer.fixed_amount if has_offer and offer.discount_type == "FIXED"
+        else discount_percentage if has_offer else None
     )
-
-    has_offer = is_offer_valid(
-        product.offer
-    )
-
-    discount_percentage = 0
-
-    if has_offer:
-
-        discount_percentage = (
-            product.offer.discount_percentage
-        )
 
     return {
         "starting_price": starting_price.quantize(
@@ -233,6 +281,9 @@ def get_product_prices(product):
         ),
         "has_offer": has_offer,
         "discount_percentage": discount_percentage,
+        "discount_type": discount_type,
+        "discount_value": discount_value,
+        "fixed_amount": offer.fixed_amount if has_offer and offer.discount_type == "FIXED" else None,
     }
 from rest_framework.throttling import SimpleRateThrottle
 

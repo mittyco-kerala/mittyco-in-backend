@@ -37,6 +37,7 @@ from myapp.utils import (
     calculate_order_total,
     calculate_coupon_price,
     get_eligible_coupon,
+    get_applicable_offer,
     PaymentRateThrottle,
 )
 from myapp.welcome_bonus import (
@@ -148,7 +149,7 @@ def create_checkout_session(request):
 
         discounted_price = calculate_offer_price(
             original_price,
-            item.variant.product.offer
+            get_applicable_offer(item.variant.product, item.variant),
         )
 
         welcome_bonus_assignment_id = item.welcome_bonus_assignment_id
@@ -782,7 +783,7 @@ def fulfill_paid_order(session):
         )
         current_offer_price = calculate_offer_price(
             current_original_price,
-            selected_variant.product.offer,
+            get_applicable_offer(selected_variant.product, selected_variant),
         )
         current_discounted_price = calculate_welcome_bonus_price(
             current_offer_price,
