@@ -67,3 +67,62 @@ class CashfreeCheckout(models.Model):
 
     def __str__(self):
         return f"{self.cashfree_order_id} ({self.status})"
+
+
+class RazorpayCheckout(models.Model):
+    """Server-side snapshot for a Razorpay Standard Checkout attempt."""
+
+    STATUS_CHOICES = (
+        ("Created", "Created"),
+        ("Active", "Active"),
+        ("Paid", "Paid"),
+        ("Fulfilled", "Fulfilled"),
+        ("Failed", "Failed"),
+        ("Fulfillment Error", "Fulfillment Error"),
+    )
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="razorpay_checkouts",
+    )
+    address = models.ForeignKey(
+        "myapp.Address",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="razorpay_checkouts",
+    )
+    order = models.OneToOneField(
+        "myapp.Order",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="razorpay_checkout",
+    )
+    razorpay_order_id = models.CharField(max_length=255, unique=True)
+    idempotency_key = models.CharField(
+        max_length=255,
+        unique=True,
+        null=True,
+        blank=True,
+    )
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    currency = models.CharField(max_length=3)
+    snapshot = models.JSONField(default=dict)
+    status = models.CharField(
+        max_length=30,
+        choices=STATUS_CHOICES,
+        default="Created",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = (
+            models.Index(fields=("user", "status")),
+            models.Index(fields=("created_at",)),
+        )
+
+    def __str__(self):
+        return f"{self.razorpay_order_id} ({self.status})"

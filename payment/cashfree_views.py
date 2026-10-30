@@ -336,9 +336,9 @@ def _snapshot_decimal(snapshot, key):
 
 
 @transaction.atomic
-def fulfill_cashfree_checkout(checkout):
+def fulfill_checkout(checkout, *, checkout_model, payment_method):
     checkout = (
-        CashfreeCheckout.objects.select_for_update()
+        checkout_model.objects.select_for_update()
         .select_related("address")
         .get(pk=checkout.pk)
     )
@@ -464,7 +464,7 @@ def fulfill_cashfree_checkout(checkout):
         shipping_charge=_snapshot_decimal(snapshot, "shipping_charge"),
         total_amount=expected_total,
         payment_status="Paid",
-        payment_method="Cashfree",
+        payment_method=payment_method,
         status="Processing",
     )
 
@@ -512,6 +512,14 @@ def fulfill_cashfree_checkout(checkout):
     checkout.save(update_fields=("order", "status", "updated_at"))
     transaction.on_commit(lambda order_id=order.id: send_order_notifications(order_id))
     return order
+
+
+def fulfill_cashfree_checkout(checkout):
+    return fulfill_checkout(
+        checkout,
+        checkout_model=CashfreeCheckout,
+        payment_method="Cashfree",
+    )
 
 
 def _success_response(order):

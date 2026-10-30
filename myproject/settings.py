@@ -381,6 +381,13 @@ CASHFREE_CLIENT_SECRET = os.getenv("CASHFREE_CLIENT_SECRET", "").strip()
 CASHFREE_ORDER_CURRENCY = os.getenv("CASHFREE_ORDER_CURRENCY", "INR").strip().upper()
 CASHFREE_WEBHOOK_URL = os.getenv("CASHFREE_WEBHOOK_URL", "").strip()
 
+# Razorpay Standard Checkout. Keep the secret on the backend only. Test-mode
+# credentials are selected in the Razorpay dashboard and use the same API URL.
+RAZORPAY_ENABLED = os.getenv("RAZORPAY_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
+RAZORPAY_KEY_ID = os.getenv("RAZORPAY_KEY_ID", "").strip()
+RAZORPAY_KEY_SECRET = os.getenv("RAZORPAY_KEY_SECRET", "").strip()
+RAZORPAY_ORDER_CURRENCY = os.getenv("RAZORPAY_ORDER_CURRENCY", "INR").strip().upper()
+
 # Legacy Stripe settings remain available for historical checkout records.
 
 STRIPE_PUBLISHABLE_KEY = os.getenv("STRIPE_PUBLISHABLE_KEY")
