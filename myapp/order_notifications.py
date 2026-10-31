@@ -14,6 +14,7 @@ from django.core.mail import EmailMultiAlternatives
 from django.utils.timezone import localtime
 
 from .models import Order
+from .customer_emails import send_paid_invoice_email
 
 
 logger = logging.getLogger(__name__)
@@ -162,10 +163,11 @@ def send_owner_order_email(order_id):
 
 
 def send_order_notifications(order_id):
-    """Send all configured owner notifications after an order is committed."""
+    """Send customer invoice and configured owner notifications after commit."""
 
-    email_sent = send_owner_order_email(order_id)
+    customer_invoice_sent = send_paid_invoice_email(order_id)
+    owner_email_sent = send_owner_order_email(order_id)
     from .whatsapp import send_owner_order_notification as send_whatsapp_notification
 
     whatsapp_sent = send_whatsapp_notification(order_id)
-    return email_sent or whatsapp_sent
+    return customer_invoice_sent or owner_email_sent or whatsapp_sent

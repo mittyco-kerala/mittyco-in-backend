@@ -21,6 +21,7 @@ from .models import RazorpayCheckout
 from .razorpay_services import RazorpayAPIError, RazorpayService
 from myapp.models import Address
 from myapp.utils import PaymentRateThrottle
+from myapp.customer_emails import send_pending_payment_email
 
 
 logger = logging.getLogger(__name__)
@@ -131,6 +132,9 @@ def create_razorpay_order(request):
         snapshot=snapshot,
         status="Active",
     )
+    # This is a checkout-started notification, not proof of payment. The
+    # invoice email is sent later from the paid-order fulfilment hook.
+    send_pending_payment_email(checkout, provider="Razorpay")
     response = _checkout_response(checkout)
     response.data.update(
         {

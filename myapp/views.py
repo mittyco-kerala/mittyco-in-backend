@@ -68,6 +68,7 @@ import csv
 import logging
 from google.auth.exceptions import GoogleAuthError
 from .utils import AuthRateThrottle, SearchRateThrottle, get_applicable_offer
+from .customer_emails import send_welcome_email
 from .auth_cookies import clear_auth_cookies, set_auth_cookies
 from .authentication import enforce_csrf
 from .welcome_bonus import (
@@ -256,6 +257,11 @@ def google_login(request):
 
             UserProfile.objects.get_or_create(user=user)
 
+            if created:
+                transaction.on_commit(
+                    lambda user_id=user.id: send_welcome_email(user_id)
+                )
+
         if not user.is_active:
             return Response(
                 {"detail": "This account is disabled."},
@@ -308,7 +314,8 @@ def register(request):
 
     serializer.is_valid(raise_exception=True)
 
-    serializer.save()
+    user = serializer.save()
+    transaction.on_commit(lambda user_id=user.id: send_welcome_email(user_id))
 
     return Response(
         {

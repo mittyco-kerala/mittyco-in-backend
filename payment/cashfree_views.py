@@ -41,6 +41,7 @@ from myapp.welcome_bonus import (
     redeem_welcome_bonus_assignment,
 )
 from myapp.order_notifications import send_order_notifications
+from myapp.customer_emails import send_pending_payment_email
 
 from .cashfree_services import CashfreeAPIError, CashfreeService
 from .models import CashfreeCheckout
@@ -302,6 +303,9 @@ def create_cashfree_order(request):
     checkout.payment_session_id = payment_session_id
     checkout.status = "Active"
     checkout.save(update_fields=("payment_session_id", "status", "updated_at"))
+    # This is a checkout-started notification, not proof of payment. The
+    # invoice email is sent later from the paid-order fulfilment hook.
+    send_pending_payment_email(checkout, provider="Cashfree")
     return _checkout_response(checkout)
 
 
