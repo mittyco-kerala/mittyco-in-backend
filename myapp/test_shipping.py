@@ -1,10 +1,16 @@
 from types import SimpleNamespace
+from unittest.mock import patch
 from unittest import TestCase
+
+from django.test import override_settings
 
 from .shipping import (
     IndiaPostShippingError,
     calculate_india_post_charge,
     calculate_cart_weight_grams,
+    calculate_cart_shipping,
+    calculate_distance_km,
+    is_within_free_delivery_radius,
     parse_weight_grams,
 )
 
@@ -85,3 +91,78 @@ class IndiaPostShippingTests(TestCase):
         )
 
         self.assertEqual(calculate_cart_weight_grams([first, second, third]), 2300)
+
+    def test_free_delivery_uses_latitude_and_longitude_with_five_km_boundary(self):
+        self.assertEqual(
+            calculate_distance_km(12.000000, 75.000000, 12.000000, 75.000000),
+            0.0,
+        )
+        self.assertTrue(
+            is_within_free_delivery_radius(
+                origin_latitude=12.000000,
+                origin_longitude=75.000000,
+                destination_latitude=12.040000,
+                destination_longitude=75.000000,
+                radius_km=5,
+            )
+        )
+        self.assertFalse(
+            is_within_free_delivery_radius(
+                origin_latitude=12.000000,
+                origin_longitude=75.000000,
+                destination_latitude=12.060000,
+                destination_longitude=75.000000,
+                radius_km=5,
+            )
+        )
+
+    @override_settings(
+        INDIA_POST_ORIGIN_PINCODE="670353",
+        INDIA_POST_ORIGIN_STATE="Kerala",
+        INDIA_POST_ORIGIN_LATITUDE="12.000000",
+        INDIA_POST_ORIGIN_LONGITUDE="75.000000",
+        INDIA_POST_FREE_DELIVERY_RADIUS_KM="5",
+    )
+    def test_cart_shipping_is_free_when_delivery_location_is_within_five_km(self):
+        cart_item = SimpleNamespace(
+            quantity=1,
+            variant=SimpleNamespace(shipping_weight_grams=500),
+            variant_unit=None,
+        )
+        address = SimpleNamespace(
+            postal_code="670353",
+            latitude="12.040000",
+            longitude="75.000000",
+        )
+
+        quote = calculate_cart_shipping([cart_item], address)
+
+        self.assertEqual(quote["amount"], "0.00")
+        self.assertTrue(quote["free_delivery"])
+        self.assertEqual(quote["shipping_class"], "FREE_LOCAL")
+
+    @override_settings(
+        INDIA_POST_ORIGIN_PINCODE="670353",
+        INDIA_POST_ORIGIN_STATE="Kerala",
+        INDIA_POST_ORIGIN_LATITUDE="12.000000",
+        INDIA_POST_ORIGIN_LONGITUDE="75.000000",
+        INDIA_POST_FREE_DELIVERY_RADIUS_KM="5",
+    )
+    @patch("myapp.shipping.lookup_pincode_state", return_value="Kerala")
+    def test_cart_shipping_uses_india_post_when_delivery_location_is_outside_radius(self, _lookup):
+        cart_item = SimpleNamespace(
+            quantity=1,
+            variant=SimpleNamespace(shipping_weight_grams=500),
+            variant_unit=None,
+        )
+        address = SimpleNamespace(
+            postal_code="670307",
+            latitude="12.060000",
+            longitude="75.000000",
+        )
+
+        quote = calculate_cart_shipping([cart_item], address)
+
+        self.assertEqual(quote["amount"], "65.00")
+        self.assertFalse(quote["free_delivery"])
+        self.assertEqual(quote["shipping_class"], "WITHIN_STATE")

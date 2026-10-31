@@ -8,6 +8,7 @@ the caller's public IP to be whitelisted.
 
 import json
 import logging
+import math
 import re
 from decimal import Decimal, InvalidOperation, ROUND_CEILING
 from functools import lru_cache
@@ -22,6 +23,7 @@ logger = logging.getLogger(__name__)
 RATE_VERSION = "2026-08-01"
 MAX_PARCEL_WEIGHT_GRAMS = 35_000
 DEFAULT_ITEM_WEIGHT_GRAMS = 500
+DEFAULT_FREE_DELIVERY_RADIUS_KM = 5.0
 
 # India Post Parcel Retail rates effective 01.08.2026.  Values are base
 # retail rates in INR; GST is not silently added because the applicable tax
@@ -46,6 +48,81 @@ _WEIGHT_RE = re.compile(
 
 class IndiaPostShippingError(ValueError):
     """Raised when a parcel quote cannot be calculated safely."""
+
+
+def _coordinate(value, *, minimum, maximum, label):
+    try:
+        coordinate = float(value)
+    except (TypeError, ValueError):
+        raise IndiaPostShippingError(f"{label} must be a valid number.")
+    if not math.isfinite(coordinate) or coordinate < minimum or coordinate > maximum:
+        raise IndiaPostShippingError(f"{label} is outside the valid range.")
+    return coordinate
+
+
+def calculate_distance_km(origin_latitude, origin_longitude, destination_latitude, destination_longitude):
+    """Return the straight-line distance between two WGS-84 coordinates."""
+
+    origin_latitude = _coordinate(
+        origin_latitude, minimum=-90, maximum=90, label="Origin latitude"
+    )
+    origin_longitude = _coordinate(
+        origin_longitude, minimum=-180, maximum=180, label="Origin longitude"
+    )
+    destination_latitude = _coordinate(
+        destination_latitude, minimum=-90, maximum=90, label="Destination latitude"
+    )
+    destination_longitude = _coordinate(
+        destination_longitude, minimum=-180, maximum=180, label="Destination longitude"
+    )
+
+    earth_radius_km = 6371.0088
+    origin_latitude_radians = math.radians(origin_latitude)
+    destination_latitude_radians = math.radians(destination_latitude)
+    delta_latitude = math.radians(destination_latitude - origin_latitude)
+    delta_longitude = math.radians(destination_longitude - origin_longitude)
+    haversine = (
+        math.sin(delta_latitude / 2) ** 2
+        + math.cos(origin_latitude_radians)
+        * math.cos(destination_latitude_radians)
+        * math.sin(delta_longitude / 2) ** 2
+    )
+    return earth_radius_km * 2 * math.asin(math.sqrt(min(1.0, haversine)))
+
+
+def is_within_free_delivery_radius(
+    *,
+    origin_latitude,
+    origin_longitude,
+    destination_latitude,
+    destination_longitude,
+    radius_km=DEFAULT_FREE_DELIVERY_RADIUS_KM,
+):
+    try:
+        radius = float(radius_km)
+    except (TypeError, ValueError):
+        raise IndiaPostShippingError("Free delivery radius is invalid.")
+    if not math.isfinite(radius) or radius < 0:
+        raise IndiaPostShippingError("Free delivery radius must be zero or greater.")
+    return calculate_distance_km(
+        origin_latitude,
+        origin_longitude,
+        destination_latitude,
+        destination_longitude,
+    ) <= radius
+
+
+def _configured_free_delivery_radius_km():
+    raw_value = getattr(
+        settings,
+        "INDIA_POST_FREE_DELIVERY_RADIUS_KM",
+        DEFAULT_FREE_DELIVERY_RADIUS_KM,
+    )
+    try:
+        radius = float(raw_value)
+    except (TypeError, ValueError):
+        radius = DEFAULT_FREE_DELIVERY_RADIUS_KM
+    return radius if math.isfinite(radius) and radius >= 0 else DEFAULT_FREE_DELIVERY_RADIUS_KM
 
 
 def _valid_pincode(value):
@@ -226,6 +303,59 @@ def calculate_cart_shipping(cart_items, address):
         raise IndiaPostShippingError("INDIA_POST_ORIGIN_PINCODE is not configured on the server.")
     destination_pincode = str(getattr(address, "postal_code", "") or "").strip()
     weight = calculate_cart_weight_grams(cart_items)
+    free_delivery_radius_km = _configured_free_delivery_radius_km()
+    origin_latitude = getattr(settings, "INDIA_POST_ORIGIN_LATITUDE", "")
+    origin_longitude = getattr(settings, "INDIA_POST_ORIGIN_LONGITUDE", "")
+    destination_latitude = getattr(address, "latitude", None)
+    destination_longitude = getattr(address, "longitude", None)
+    distance_km = None
+    if all(
+        value not in (None, "")
+        for value in (
+            origin_latitude,
+            origin_longitude,
+            destination_latitude,
+            destination_longitude,
+        )
+    ):
+        try:
+            distance_km = calculate_distance_km(
+                origin_latitude,
+                origin_longitude,
+                destination_latitude,
+                destination_longitude,
+            )
+        except IndiaPostShippingError as error:
+            # Do not make checkout unavailable because an optional location
+            # field is malformed; fall back to the India Post quote safely.
+            logger.warning("Free-delivery location ignored: %s", error)
+
+    if distance_km is not None and distance_km <= free_delivery_radius_km:
+        quote = {
+            "amount": "0.00",
+            "base_amount": "0.00",
+            "weight_grams": weight,
+            "shipping_class": "FREE_LOCAL",
+            "rate_version": RATE_VERSION,
+            "service": "Mittyco Local Delivery",
+            "gst_rate": "0",
+            "free_delivery": True,
+            "distance_km": f"{distance_km:.2f}",
+            "free_delivery_radius_km": f"{free_delivery_radius_km:.2f}",
+        }
+        quote.update(
+            {
+                "origin_pincode": origin_pincode,
+                "destination_pincode": destination_pincode,
+                "estimated_delivery_time": getattr(
+                    settings,
+                    "INDIA_POST_ESTIMATED_DELIVERY",
+                    "4-5 business days",
+                ),
+            }
+        )
+        return quote
+
     origin_state = getattr(settings, "INDIA_POST_ORIGIN_STATE", "")
     destination_state = "" if origin_pincode == destination_pincode else lookup_pincode_state(destination_pincode)
     quote = calculate_india_post_charge(
@@ -241,6 +371,9 @@ def calculate_cart_shipping(cart_items, address):
             "origin_pincode": origin_pincode,
             "destination_pincode": destination_pincode,
             "estimated_delivery_time": getattr(settings, "INDIA_POST_ESTIMATED_DELIVERY", "4-5 business days"),
+            "free_delivery": False,
+            "distance_km": f"{distance_km:.2f}" if distance_km is not None else None,
+            "free_delivery_radius_km": f"{free_delivery_radius_km:.2f}",
         }
     )
     return quote

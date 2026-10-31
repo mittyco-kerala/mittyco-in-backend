@@ -31,6 +31,7 @@ from myapp.models import (
     WelcomeBonusAssignment,
 )
 from myapp.order_notifications import send_order_notifications
+from myapp.shipping import IndiaPostShippingError, calculate_cart_shipping
 
 from myapp.utils import (
     calculate_offer_price,
@@ -247,8 +248,17 @@ def create_checkout_session(request):
         )
 
 
+    try:
+        shipping_quote = calculate_cart_shipping(cart_items, address)
+    except IndiaPostShippingError as error:
+        return Response(
+            {"message": str(error)},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
     totals = calculate_order_total(
-        discounted_subtotal
+        discounted_subtotal,
+        shipping_charge=Decimal(str(shipping_quote["amount"])),
     )
 
 
