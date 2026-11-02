@@ -7,6 +7,7 @@ from .cashfree_views import (
 )
 from .razorpay_views import (
     create_razorpay_order,
+    razorpay_webhook,
     razorpay_payment_success,
     verify_razorpay_payment,
 )
@@ -26,6 +27,11 @@ urlpatterns = [
         "razorpay-success/",
         razorpay_payment_success,
         name="razorpay_success",
+    ),
+    path(
+        "razorpay-webhook/",
+        razorpay_webhook,
+        name="razorpay_webhook",
     ),
     path(
         "create-cashfree-order/",

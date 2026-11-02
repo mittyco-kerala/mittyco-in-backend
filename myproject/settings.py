@@ -388,6 +388,7 @@ CASHFREE_WEBHOOK_URL = os.getenv("CASHFREE_WEBHOOK_URL", "").strip()
 RAZORPAY_ENABLED = os.getenv("RAZORPAY_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
 RAZORPAY_KEY_ID = os.getenv("RAZORPAY_KEY_ID", "").strip()
 RAZORPAY_KEY_SECRET = os.getenv("RAZORPAY_KEY_SECRET", "").strip()
+RAZORPAY_WEBHOOK_SECRET = os.getenv("RAZORPAY_WEBHOOK_SECRET", "").strip()
 RAZORPAY_ORDER_CURRENCY = os.getenv("RAZORPAY_ORDER_CURRENCY", "INR").strip().upper()
 
 # India Post retail parcel shipping.  The rate table is implemented from the

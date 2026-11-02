@@ -1,14 +1,17 @@
 import hashlib
 import hmac
+import json
 import logging
 import secrets
 from decimal import Decimal, InvalidOperation
 
 from django.conf import settings
+from django.http import HttpResponse
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes, throttle_classes
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
+from django.views.decorators.csrf import csrf_exempt
 
 from .cashfree_views import (
     CheckoutFulfillmentError,
@@ -159,6 +162,63 @@ def _signature_is_valid(order_id, payment_id, signature):
     return bool(signature) and hmac.compare_digest(expected, str(signature))
 
 
+def _razorpay_webhook_signature_is_valid(raw_body, signature):
+    secret = str(getattr(settings, "RAZORPAY_WEBHOOK_SECRET", "") or "").strip()
+    signature = str(signature or "").strip()
+    if not secret or not signature:
+        return False
+    expected = hmac.new(
+        secret.encode("utf-8"),
+        raw_body,
+        hashlib.sha256,
+    ).hexdigest()
+    return hmac.compare_digest(expected, signature)
+
+
+def _razorpay_webhook_entities(event):
+    payload = event.get("payload") or {}
+    payment = (payload.get("payment") or {}).get("entity") or {}
+    order = (payload.get("order") or {}).get("entity") or {}
+    if not isinstance(payment, dict):
+        payment = {}
+    if not isinstance(order, dict):
+        order = {}
+    return payment, order
+
+
+def _razorpay_webhook_order_id(payment, order):
+    return str(payment.get("order_id") or order.get("id") or "").strip()
+
+
+def _razorpay_webhook_amount_and_currency(event_name, payment, order):
+    if event_name == "payment.captured":
+        return payment.get("amount"), payment.get("currency")
+    return order.get("amount_paid") or order.get("amount"), order.get("currency")
+
+
+def _razorpay_webhook_payment_is_valid(checkout, event_name, payment, order):
+    amount, currency = _razorpay_webhook_amount_and_currency(event_name, payment, order)
+    try:
+        provider_amount = int(amount or 0)
+        expected_amount = _amount_in_paise(checkout.amount)
+    except (TypeError, ValueError, InvalidOperation):
+        return False
+
+    if provider_amount != expected_amount:
+        return False
+    if str(currency or "").upper() != checkout.currency.upper():
+        return False
+
+    provider_status = str(
+        payment.get("status") if event_name == "payment.captured" else order.get("status")
+    ).lower()
+    if event_name == "payment.captured" and provider_status != "captured":
+        return False
+    if event_name == "order.paid" and provider_status and provider_status != "paid":
+        return False
+    return True
+
+
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 @throttle_classes([PaymentRateThrottle])
@@ -236,6 +296,118 @@ def verify_razorpay_payment(request):
             "razorpay_order_id": checkout.razorpay_order_id,
         }
     )
+
+
+@csrf_exempt
+@api_view(["POST"])
+@permission_classes([AllowAny])
+def razorpay_webhook(request):
+    """Accept signed Razorpay payment events and fulfil a checkout once.
+
+    The raw request bytes are verified before JSON parsing. Razorpay may send
+    both ``payment.captured`` and ``order.paid`` for one checkout, so the
+    shared fulfilment function's row lock and existing order relation provide
+    the idempotency guard.
+    """
+    if not getattr(settings, "RAZORPAY_ENABLED", False):
+        return Response(
+            {"message": "Razorpay payments are disabled."},
+            status=status.HTTP_503_SERVICE_UNAVAILABLE,
+        )
+
+    raw_body = request.body
+    if len(raw_body) > 1_000_000:
+        return HttpResponse(status=413)
+
+    signature = request.META.get("HTTP_X_RAZORPAY_SIGNATURE", "")
+    if not _razorpay_webhook_signature_is_valid(raw_body, signature):
+        return Response(
+            {"message": "Invalid webhook signature."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    try:
+        event = json.loads(raw_body.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return Response(
+            {"message": "Invalid webhook payload."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    if not isinstance(event, dict):
+        return Response(
+            {"message": "Invalid webhook payload."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    event_name = str(event.get("event") or "").strip()
+    if event_name not in {"payment.captured", "order.paid", "payment.failed"}:
+        return Response({"status": "ignored"})
+
+    payment, order = _razorpay_webhook_entities(event)
+    razorpay_order_id = _razorpay_webhook_order_id(payment, order)
+    if not razorpay_order_id:
+        logger.warning("Razorpay webhook did not contain an order ID")
+        return Response({"status": "ignored"})
+
+    checkout = RazorpayCheckout.objects.filter(
+        razorpay_order_id=razorpay_order_id,
+    ).first()
+    if not checkout:
+        logger.warning(
+            "Received Razorpay webhook for unknown order",
+            extra={"razorpay_order_id": razorpay_order_id},
+        )
+        return Response({"status": "ignored"})
+
+    if event_name == "payment.failed":
+        if not checkout.order_id and checkout.status not in {"Paid", "Fulfilled"}:
+            checkout.status = "Failed"
+            checkout.save(update_fields=("status", "updated_at"))
+        return Response({"status": "ok"})
+
+    if not _razorpay_webhook_payment_is_valid(checkout, event_name, payment, order):
+        logger.warning(
+            "Razorpay webhook payment did not match checkout",
+            extra={"razorpay_order_id": razorpay_order_id, "event": event_name},
+        )
+        return Response(
+            {"message": "Webhook payment does not match the checkout."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    if checkout.order_id:
+        return Response({"status": "ok"})
+
+    checkout.status = "Paid"
+    checkout.save(update_fields=("status", "updated_at"))
+    try:
+        fulfill_checkout(
+            checkout,
+            checkout_model=RazorpayCheckout,
+            payment_method="Razorpay",
+        )
+    except CheckoutFulfillmentError:
+        checkout.status = "Fulfillment Error"
+        checkout.save(update_fields=("status", "updated_at"))
+        logger.exception(
+            "Razorpay webhook payment succeeded but order fulfilment failed",
+            extra={"razorpay_order_id": razorpay_order_id},
+        )
+        return Response(
+            {"message": "Payment received but order fulfilment failed."},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+    except Exception:
+        logger.exception(
+            "Unexpected Razorpay webhook fulfilment failure",
+            extra={"razorpay_order_id": razorpay_order_id},
+        )
+        return Response(
+            {"message": "Payment received but order processing failed."},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+    return Response({"status": "ok"})
 
 
 @api_view(["GET"])

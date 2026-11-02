@@ -20,6 +20,7 @@ class AbuseProtectionMiddleware:
     EXEMPT_PATHS = (
         "/payment/stripe-webhook/",
         "/payment/cashfree-webhook/",
+        "/payment/razorpay-webhook/",
     )
 
     @staticmethod
