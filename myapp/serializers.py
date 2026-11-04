@@ -1586,6 +1586,9 @@ class HomepageProductSerializer(serializers.ModelSerializer):
     in_stock = serializers.SerializerMethodField()
     default_variant_id = serializers.SerializerMethodField()
     default_variant_unit_id = serializers.SerializerMethodField()
+    default_color_name = serializers.SerializerMethodField()
+    default_unit_type_name = serializers.SerializerMethodField()
+    default_unit_name = serializers.SerializerMethodField()
     marketing_highlights = serializers.SerializerMethodField()
     product_messages = serializers.SerializerMethodField()
 
@@ -1611,6 +1614,9 @@ class HomepageProductSerializer(serializers.ModelSerializer):
             "in_stock",
             "default_variant_id",
             "default_variant_unit_id",
+            "default_color_name",
+            "default_unit_type_name",
+            "default_unit_name",
             "shipping_fee",
             "estimated_delivery_time",
             "warranty_info",
@@ -1707,6 +1713,27 @@ class HomepageProductSerializer(serializers.ModelSerializer):
 
     def get_default_variant_unit_id(self, obj):
         return self._default_choice(obj)[2]
+
+    def _default_variant_and_unit(self, obj):
+        _, variant_id, unit_id, _ = self._default_choice(obj)
+        variants = list(obj.variants.all())
+        variant = next((item for item in variants if item.id == variant_id), None)
+        if not variant or not unit_id:
+            return variant, None
+        unit = next((item for item in variant.sizes.all() if item.id == unit_id), None)
+        return variant, unit
+
+    def get_default_color_name(self, obj):
+        variant, _ = self._default_variant_and_unit(obj)
+        return variant.color.name if variant and variant.color else None
+
+    def get_default_unit_type_name(self, obj):
+        _, unit = self._default_variant_and_unit(obj)
+        return unit.unit_type.name if unit and unit.unit_type else None
+
+    def get_default_unit_name(self, obj):
+        _, unit = self._default_variant_and_unit(obj)
+        return unit.unit.name if unit and unit.unit else None
 
 
 class HomepageBrandSerializer(serializers.ModelSerializer):
