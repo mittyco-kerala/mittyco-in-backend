@@ -87,6 +87,54 @@ class PublicProductPagination(PageNumberPagination):
     max_page_size = 100
 
 
+def _active_offer_queryset():
+    today = timezone.localdate()
+    return Offer.objects.filter(
+        is_active=True,
+        start_date__lte=today,
+        end_date__gte=today,
+    ).order_by("-created_at", "-id")
+
+
+def _public_product_queryset(products=None):
+    """Eager-load the complete product payload used by public catalog APIs.
+
+    ProductSerializer includes variants, images, units, highlights, messages,
+    and offer-derived fields. Without these prefetches a page of products can
+    issue one or more database queries per related object while serializing.
+    """
+    if products is None:
+        products = Product.objects.filter(is_active=True)
+
+    active_offers = _active_offer_queryset()
+    variants = (
+        ProductVariant.objects
+        .select_related("color")
+        .prefetch_related(
+            "images",
+            "sizes__unit__unit_type",
+            Prefetch("campaign_offers", queryset=active_offers),
+        )
+        .order_by("id")
+    )
+    highlights = ProductHighlight.objects.filter(is_active=True).order_by(
+        "display_order", "id"
+    )
+    messages = ProductMessage.objects.filter(is_active=True).order_by(
+        "display_order", "id"
+    )
+    return (
+        products
+        .select_related("category", "subcategory", "brand", "offer")
+        .prefetch_related(
+            Prefetch("variants", queryset=variants),
+            Prefetch("campaign_offers", queryset=active_offers),
+            Prefetch("marketing_highlights", queryset=highlights),
+            Prefetch("product_messages", queryset=messages),
+        )
+    )
+
+
 def _catalog_price_expression():
     price_field = DecimalField(max_digits=10, decimal_places=2)
     return Coalesce(
@@ -496,16 +544,16 @@ def get_categories(request):  #NAVBAR IL ULLA CATOGARY DROPDOWN IL
 @api_view(["GET"])    
 def category_products( request, category_id ):  #CATOGRY YILE PRODUCTS PAGE IL
 
-    products = Product.objects.filter( category_id=category_id, is_active=True )
+    products = _public_product_queryset(
+        Product.objects.filter(category_id=category_id, is_active=True)
+    )
     return _paginate_public_products(request, products.order_by("-created_at"))
 
 
 @api_view(["GET"])
 def get_products(request):
 
-    products = Product.objects.filter(
-        is_active=True
-    )
+    products = _public_product_queryset()
 
     category = request.GET.get("category")
     subcategory = request.GET.get("subcategory")
@@ -552,21 +600,9 @@ def product_details( request,pk): #PRODUCT DETAIL PAGE IL SIZE UM COLOR SELET CH
 
     try:
 
-        product = (
-            Product.objects
-            .select_related("category", "subcategory", "brand", "offer")
-            .prefetch_related(
-                Prefetch(
-                    "variants",
-                    queryset=(
-                        ProductVariant.objects
-                        .select_related("color")
-                        .prefetch_related("images", "sizes__unit__unit_type")
-                    ),
-                )
-            )
-            .get(id=pk, is_active=True)
-        )
+        product = _public_product_queryset(
+            Product.objects.filter(id=pk, is_active=True)
+        ).get()
         
         # Track unique view only if not a bot
         from .models import ProductView
@@ -658,11 +694,9 @@ def related_products(
 @api_view(["GET"])
 def new_arrivals(request):
 
-    products = Product.objects.filter(
-        is_active=True
-    ).order_by(
-        "-created_at"
-    )[:8]
+    products = _public_product_queryset(
+        Product.objects.filter(is_active=True).order_by("-created_at")[:8]
+    )
 
     serializer = ProductSerializer(
         products,
@@ -686,7 +720,11 @@ def _homepage_product_queryset(products=None):
     variant_queryset = (
         ProductVariant.objects
         .select_related("color")
-        .prefetch_related("images", "sizes__unit__unit_type")
+        .prefetch_related(
+            "images",
+            "sizes__unit__unit_type",
+            Prefetch("campaign_offers", queryset=_active_offer_queryset()),
+        )
         .order_by("id")
     )
     highlight_queryset = ProductHighlight.objects.filter(is_active=True).order_by(
@@ -705,6 +743,7 @@ def _homepage_product_queryset(products=None):
         .select_related("category", "subcategory", "brand", "offer")
         .prefetch_related(
             Prefetch("variants", queryset=variant_queryset),
+            Prefetch("campaign_offers", queryset=_active_offer_queryset()),
             Prefetch("marketing_highlights", queryset=highlight_queryset),
             Prefetch("product_messages", queryset=message_queryset),
         )
@@ -2168,9 +2207,9 @@ def offer_products(request):
 
         return Response([])
 
-    products = Product.objects.filter(
-        Q(offer=offer) | Q(campaign_offers=offer)
-    ).distinct()
+    products = _public_product_queryset(
+        Product.objects.filter(Q(offer=offer) | Q(campaign_offers=offer)).distinct()
+    )
 
     serializer = ProductSerializer(
         products,
@@ -2270,9 +2309,7 @@ def search_products(request):
         except (TypeError, ValueError):
             return Response({"error": "Invalid category or subcategory"}, status=400)
 
-        products = Product.objects.filter(
-            is_active=True
-        )
+        products = _public_product_queryset()
 
         if search:
 

@@ -1,5 +1,8 @@
 from decimal import Decimal
 
+
+_NO_PREFETCH = object()
+
 from django.utils import timezone
 
 from .catalog_pricing import get_product_price_values
@@ -115,20 +118,38 @@ def get_applicable_offer(product, variant=None):
         "start_date__lte": today,
         "end_date__gte": today,
     }
+
+    def cached_offer(instance, *, variant_is_null):
+        prefetched = getattr(instance, "_prefetched_objects_cache", {})
+        if "campaign_offers" not in prefetched:
+            return _NO_PREFETCH
+        offers = [
+            offer
+            for offer in prefetched["campaign_offers"]
+            if offer.is_active
+            and offer.start_date <= today <= offer.end_date
+            and (not variant_is_null or offer.variant_id is None)
+        ]
+        return max(offers, key=lambda offer: (offer.created_at, offer.id), default=None)
+
     if variant and getattr(variant, "pk", None):
-        variant_offer = (
-            Offer.objects.filter(variant_id=variant.pk, **active)
-            .order_by("-created_at", "-id")
-            .first()
-        )
+        variant_offer = cached_offer(variant, variant_is_null=False)
+        if variant_offer is _NO_PREFETCH:
+            variant_offer = (
+                Offer.objects.filter(variant_id=variant.pk, **active)
+                .order_by("-created_at", "-id")
+                .first()
+            )
         if variant_offer:
             return variant_offer
 
-    product_offer = (
-        Offer.objects.filter(product_id=product.pk, variant__isnull=True, **active)
-        .order_by("-created_at", "-id")
-        .first()
-    )
+    product_offer = cached_offer(product, variant_is_null=True)
+    if product_offer is _NO_PREFETCH:
+        product_offer = (
+            Offer.objects.filter(product_id=product.pk, variant__isnull=True, **active)
+            .order_by("-created_at", "-id")
+            .first()
+        )
     if product_offer:
         return product_offer
 
