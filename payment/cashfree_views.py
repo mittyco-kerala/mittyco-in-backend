@@ -42,6 +42,7 @@ from myapp.welcome_bonus import (
 )
 from myapp.order_notifications import send_order_notifications
 from myapp.customer_emails import send_pending_payment_email
+from myapp.prodinent import sync_order_to_prodinent
 
 from .cashfree_services import CashfreeAPIError, CashfreeService
 from .models import CashfreeCheckout
@@ -522,6 +523,7 @@ def fulfill_checkout(checkout, *, checkout_model, payment_method):
     checkout.status = "Fulfilled"
     checkout.save(update_fields=("order", "status", "updated_at"))
     transaction.on_commit(lambda order_id=order.id: send_order_notifications(order_id))
+    transaction.on_commit(lambda order_id=order.id: sync_order_to_prodinent(order_id))
     return order
 
 

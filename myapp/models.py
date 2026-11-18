@@ -936,6 +936,16 @@ class Order(models.Model):
         default="Pending"
     )
 
+    # Prodinent shipment state is kept separately from the storefront order
+    # state so a provider retry or booking failure cannot corrupt payment state.
+    prodinent_order_id = models.CharField(max_length=80, blank=True, null=True)
+    prodinent_status = models.CharField(max_length=40, blank=True, null=True)
+    prodinent_article_id = models.CharField(max_length=80, blank=True, null=True)
+    prodinent_tracking_link = models.URLField(max_length=500, blank=True, null=True)
+    prodinent_label_available = models.BooleanField(default=False)
+    prodinent_last_error = models.TextField(blank=True, null=True)
+    prodinent_synced_at = models.DateTimeField(blank=True, null=True)
+
     created_at = models.DateTimeField(
         auto_now_add=True
     )

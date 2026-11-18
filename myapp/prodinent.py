@@ -8,12 +8,17 @@ deployment explicitly enables them.
 from urllib.parse import urlsplit
 import uuid
 from decimal import Decimal, InvalidOperation
+import logging
 
 import requests
 
 from django.conf import settings
+from django.utils import timezone
 
 from .shipping import lookup_pincode_state
+
+
+logger = logging.getLogger(__name__)
 
 
 class ProdinentAPIError(RuntimeError):
@@ -284,4 +289,108 @@ def build_order_payload(order, *, warehouse_id=None):
     if selected_warehouse:
         payload["warehouseId"] = selected_warehouse
     return payload
+
+
+def _provider_order(response):
+    provider_order = response.get("order") if isinstance(response, dict) else None
+    if not isinstance(provider_order, dict) or not provider_order.get("orderID"):
+        raise ProdinentAPIError("Prodinent returned an incomplete order response.")
+    return provider_order
+
+
+def apply_order_response(order, response):
+    """Persist only the provider identifiers needed for fulfilment/tracking."""
+
+    provider_order = _provider_order(response)
+    order.prodinent_order_id = str(provider_order["orderID"])[:80]
+    order.prodinent_status = str(provider_order.get("status") or "")[:40]
+    order.prodinent_article_id = str(provider_order.get("articleId") or "")[:80] or None
+    tracking_link = str(provider_order.get("trackingLink") or "").strip()
+    order.prodinent_tracking_link = tracking_link[:500] or None
+    order.prodinent_label_available = bool(provider_order.get("labelAvailable"))
+    order.prodinent_last_error = None
+    order.prodinent_synced_at = timezone.now()
+    order.save(
+        update_fields=(
+            "prodinent_order_id",
+            "prodinent_status",
+            "prodinent_article_id",
+            "prodinent_tracking_link",
+            "prodinent_label_available",
+            "prodinent_last_error",
+            "prodinent_synced_at",
+            "updated_at",
+        )
+    )
+    return provider_order
+
+
+def _record_sync_error(order_id, error):
+    from .models import Order
+
+    message = str(error)[:500] or "Prodinent synchronization failed."
+    Order.objects.filter(pk=order_id).update(
+        prodinent_status="Error",
+        prodinent_last_error=message,
+        prodinent_synced_at=timezone.now(),
+    )
+
+
+def sync_order_to_prodinent(order_id):
+    """Create a paid local order in Prodinent when live writes are enabled."""
+
+    if not (
+        getattr(settings, "PRODINENT_ENABLED", False)
+        and getattr(settings, "PRODINENT_LIVE_WRITES_ENABLED", False)
+    ):
+        return None
+
+    from .models import Order
+
+    order = (
+        Order.objects.select_related("user", "address")
+        .prefetch_related(
+            "items__product",
+            "items__variant_unit__variant",
+        )
+        .get(pk=order_id)
+    )
+    if order.prodinent_order_id:
+        return {"orderID": order.prodinent_order_id, "duplicate": True}
+
+    try:
+        response = ProdinentService.create_order(build_order_payload(order))
+        apply_order_response(order, response)
+        logger.info(
+            "Prodinent order created for local order %s with status %s",
+            order.id,
+            order.prodinent_status,
+        )
+        return response
+    except ProdinentAPIError as error:
+        _record_sync_error(order.id, error)
+        logger.exception("Prodinent order synchronization failed for local order %s", order.id)
+        return None
+
+
+def book_local_order_in_prodinent(order_id):
+    """Book one already-created Prodinent order from a protected admin action."""
+
+    from .models import Order
+
+    order = Order.objects.get(pk=order_id)
+    # Prodinent's booking route is addressed by our externalOrderId, not the
+    # provider-generated numeric orderID stored on the local order.
+    external_order_id = f"ORD-{order.id:06d}"
+    try:
+        response = ProdinentService.book_order(
+            external_order_id,
+            warehouse_id=getattr(settings, "PRODINENT_WAREHOUSE_ID", "") or None,
+        )
+        apply_order_response(order, response)
+        return response
+    except ProdinentAPIError as error:
+        _record_sync_error(order.id, error)
+        logger.exception("Prodinent booking failed for local order %s", order.id)
+        return None
 

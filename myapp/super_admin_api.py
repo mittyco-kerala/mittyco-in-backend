@@ -8,6 +8,7 @@ inlines.
 
 import os
 
+from django.conf import settings
 from django.core.files.base import ContentFile
 from django.db.models.fields import NOT_PROVIDED
 from django.db import transaction
@@ -57,6 +58,7 @@ from .permissions import IsSuperAdmin
 from .catalog_pricing import get_product_price_values
 from .serializers import CouponSerializer
 from .sku import unique_sku, unit_sku_base, variant_sku_base
+from .prodinent import book_local_order_in_prodinent, sync_order_to_prodinent
 
 
 class SuperAdminPagination(PageNumberPagination):
@@ -993,6 +995,57 @@ class AdminOrderViewSet(AdminModelViewSet):
                 read_only_fields = ("id", "created_at", "updated_at")
 
         return OrderAdminSerializer
+
+    @action(detail=True, methods=("post",), url_path="prodinent-sync")
+    def prodinent_sync(self, request, pk=None):
+        if not (
+            getattr(settings, "PRODINENT_ENABLED", False)
+            and getattr(settings, "PRODINENT_LIVE_WRITES_ENABLED", False)
+        ):
+            return Response(
+                {"message": "Prodinent live writes are disabled."},
+                status=409,
+            )
+        order = self.get_object()
+        sync_order_to_prodinent(order.id)
+        order.refresh_from_db()
+        if not order.prodinent_order_id:
+            return Response(
+                {
+                    "message": "Prodinent order creation failed.",
+                    "prodinent_status": order.prodinent_status,
+                },
+                status=502,
+            )
+        return Response(self.get_serializer(order).data)
+
+    @action(detail=True, methods=("post",), url_path="prodinent-book")
+    def prodinent_book(self, request, pk=None):
+        if not (
+            getattr(settings, "PRODINENT_ENABLED", False)
+            and getattr(settings, "PRODINENT_LIVE_WRITES_ENABLED", False)
+        ):
+            return Response(
+                {"message": "Prodinent live writes are disabled."},
+                status=409,
+            )
+        order = self.get_object()
+        if not order.prodinent_order_id:
+            return Response(
+                {"message": "Create the Prodinent order before booking shipment."},
+                status=409,
+            )
+        book_local_order_in_prodinent(order.id)
+        order.refresh_from_db()
+        if order.prodinent_status == "Error":
+            return Response(
+                {
+                    "message": "Prodinent shipment booking failed.",
+                    "prodinent_status": order.prodinent_status,
+                },
+                status=502,
+            )
+        return Response(self.get_serializer(order).data)
 
 
 class AdminOrderItemViewSet(AdminModelViewSet):
