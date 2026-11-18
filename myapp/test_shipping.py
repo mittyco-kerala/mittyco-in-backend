@@ -1,5 +1,6 @@
+import json
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import MagicMock, Mock, patch
 from unittest import TestCase
 
 from django.test import override_settings
@@ -66,6 +67,21 @@ class IndiaPostShippingTests(TestCase):
         self.assertEqual(parse_weight_grams("250 g"), 250)
         self.assertEqual(parse_weight_grams("1 KG"), 1000)
         self.assertIsNone(parse_weight_grams("1 litre"))
+
+    @patch("myapp.shipping.urlopen")
+    def test_pincode_state_uses_fallback_when_official_endpoint_rejects_request(self, urlopen):
+        fallback_response = MagicMock()
+        fallback_response.__enter__.return_value = fallback_response
+        fallback_response.read.return_value = json.dumps(
+            [{"Status": "Success", "PostOffice": [{"State": "Kerala"}]}]
+        ).encode("utf-8")
+        urlopen.side_effect = [OSError("HTTP 400"), fallback_response]
+
+        from .shipping import lookup_pincode_state
+
+        lookup_pincode_state.cache_clear()
+        self.assertEqual(lookup_pincode_state("670353"), "Kerala")
+        self.assertEqual(urlopen.call_count, 2)
 
     def test_cart_weight_uses_explicit_weight_then_unit_name_then_default(self):
         first = SimpleNamespace(

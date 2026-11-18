@@ -420,6 +420,10 @@ INDIA_POST_PINCODE_API_URL = os.getenv(
     "INDIA_POST_PINCODE_API_URL",
     "https://api.cept.gov.in/CommonFacilityMaster/api/values/Pincode",
 ).strip()
+PINCODE_STATE_FALLBACK_API_URL = os.getenv(
+    "PINCODE_STATE_FALLBACK_API_URL",
+    "https://api.postalpincode.in/pincode/{pincode}",
+).strip()
 INDIA_POST_PINCODE_API_REQUIRED = os.getenv(
     "INDIA_POST_PINCODE_API_REQUIRED", "false"
 ).strip().lower() in {"1", "true", "yes", "on"}

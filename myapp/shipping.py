@@ -285,7 +285,7 @@ def lookup_pincode_state(pincode):
             raise IndiaPostShippingError(
                 "India Post pincode lookup is unavailable. Whitelist the server IP or try again."
             )
-        return ""
+        return _fallback_pincode_state(pincode)
 
     rows = payload if isinstance(payload, list) else payload.get("data", []) if isinstance(payload, dict) else []
     for row in rows:
@@ -294,6 +294,44 @@ def lookup_pincode_state(pincode):
         state = row.get("StateName") or row.get("State") or row.get("state") or row.get("Circle")
         if state:
             return str(state).replace(" Circle", "").strip()
+    return _fallback_pincode_state(pincode)
+
+
+def _fallback_pincode_state(pincode):
+    """Resolve state when the official bulk endpoint rejects the server request."""
+
+    template = str(
+        getattr(
+            settings,
+            "PINCODE_STATE_FALLBACK_API_URL",
+            "https://api.postalpincode.in/pincode/{pincode}",
+        )
+        or ""
+    ).strip()
+    if not template:
+        return ""
+    endpoint = template.replace("{pincode}", pincode)
+    request = Request(endpoint, headers={"Accept": "application/json"}, method="GET")
+    try:
+        with urlopen(request, timeout=4) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except (OSError, URLError, ValueError, json.JSONDecodeError) as error:
+        logger.warning("Fallback pincode lookup unavailable: %s", error)
+        return ""
+
+    rows = payload if isinstance(payload, list) else []
+    for result in rows:
+        if not isinstance(result, dict):
+            continue
+        post_offices = result.get("PostOffice") or result.get("post_office") or []
+        if not isinstance(post_offices, list):
+            continue
+        for post_office in post_offices:
+            if not isinstance(post_office, dict):
+                continue
+            state = post_office.get("State") or post_office.get("state")
+            if state:
+                return str(state).strip()
     return ""
 
 
