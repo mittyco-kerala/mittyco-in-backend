@@ -14,10 +14,11 @@ from django.db.models.fields import NOT_PROVIDED
 from django.db import transaction
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
-from rest_framework import filters, serializers, viewsets
+from rest_framework import filters, serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
+from django.http import HttpResponse
 from rest_framework.views import APIView
 from rest_framework.pagination import PageNumberPagination
 from PIL import Image, UnidentifiedImageError
@@ -58,7 +59,14 @@ from .permissions import IsSuperAdmin
 from .catalog_pricing import get_product_price_values
 from .serializers import CouponSerializer
 from .sku import unique_sku, unit_sku_base, variant_sku_base
-from .prodinent import book_local_order_in_prodinent, sync_order_to_prodinent
+from .prodinent import (
+    ProdinentAPIError,
+    ProdinentService,
+    assign_local_order_barcode_in_prodinent,
+    book_local_order_in_prodinent,
+    refresh_local_order_tracking,
+    sync_order_to_prodinent,
+)
 
 
 class SuperAdminPagination(PageNumberPagination):
@@ -1044,6 +1052,81 @@ class AdminOrderViewSet(AdminModelViewSet):
                     "prodinent_status": order.prodinent_status,
                 },
                 status=502,
+            )
+        return Response(self.get_serializer(order).data)
+
+    @action(detail=True, methods=("post",), url_path="prodinent-barcode")
+    def prodinent_barcode(self, request, pk=None):
+        if not (
+            getattr(settings, "PRODINENT_ENABLED", False)
+            and getattr(settings, "PRODINENT_LIVE_WRITES_ENABLED", False)
+        ):
+            return Response(
+                {"message": "Prodinent live writes are disabled."},
+                status=status.HTTP_409_CONFLICT,
+            )
+        order = self.get_object()
+        if not order.prodinent_order_id:
+            return Response(
+                {"message": "Create the Prodinent order before assigning a barcode."},
+                status=status.HTTP_409_CONFLICT,
+            )
+        assign_local_order_barcode_in_prodinent(order.id)
+        order.refresh_from_db()
+        if not order.prodinent_article_id:
+            return Response(
+                {
+                    "message": "Prodinent barcode assignment failed.",
+                    "prodinent_status": order.prodinent_status,
+                },
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+        return Response(self.get_serializer(order).data)
+
+    @action(detail=True, methods=("get",), url_path="prodinent-label")
+    def prodinent_label(self, request, pk=None):
+        order = self.get_object()
+        if not order.prodinent_order_id:
+            return Response(
+                {"message": "Create the Prodinent order before downloading a label."},
+                status=status.HTTP_409_CONFLICT,
+            )
+        external_order_id = f"ORD-{order.id:06d}"
+        try:
+            pdf = ProdinentService.download_label(external_order_id)
+        except ProdinentAPIError:
+            return Response(
+                {"message": "Prodinent label is not available yet."},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+        response = HttpResponse(pdf, content_type="application/pdf")
+        response["Content-Disposition"] = (
+            f'attachment; filename="{external_order_id}-label.pdf"'
+        )
+        return response
+
+    @action(detail=True, methods=("post",), url_path="prodinent-track")
+    def prodinent_track(self, request, pk=None):
+        if not getattr(settings, "PRODINENT_ENABLED", False):
+            return Response(
+                {"message": "Prodinent integration is disabled."},
+                status=status.HTTP_409_CONFLICT,
+            )
+        order = self.get_object()
+        if not order.prodinent_order_id:
+            return Response(
+                {"message": "Create the Prodinent order before tracking it."},
+                status=status.HTTP_409_CONFLICT,
+            )
+        refresh_local_order_tracking(order.id)
+        order.refresh_from_db()
+        if order.prodinent_status == "Error":
+            return Response(
+                {
+                    "message": "Prodinent tracking refresh failed.",
+                    "prodinent_status": order.prodinent_status,
+                },
+                status=status.HTTP_502_BAD_GATEWAY,
             )
         return Response(self.get_serializer(order).data)
 

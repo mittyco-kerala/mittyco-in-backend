@@ -21,6 +21,7 @@ class AbuseProtectionMiddleware:
         "/payment/stripe-webhook/",
         "/payment/cashfree-webhook/",
         "/payment/razorpay-webhook/",
+        "/prodinent/webhook/",
     )
 
     @staticmethod

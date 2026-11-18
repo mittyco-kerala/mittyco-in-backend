@@ -403,6 +403,13 @@ PRODINENT_TIMEOUT = float(os.getenv("PRODINENT_TIMEOUT", "15"))
 PRODINENT_LIVE_WRITES_ENABLED = os.getenv(
     "PRODINENT_LIVE_WRITES_ENABLED", "false"
 ).strip().lower() in {"1", "true", "yes", "on"}
+PRODINENT_AUTO_ASSIGN_BARCODE = os.getenv(
+    "PRODINENT_AUTO_ASSIGN_BARCODE", "false"
+).strip().lower() in {"1", "true", "yes", "on"}
+PRODINENT_AUTO_BOOK_SHIPMENT = os.getenv(
+    "PRODINENT_AUTO_BOOK_SHIPMENT", "false"
+).strip().lower() in {"1", "true", "yes", "on"}
+PRODINENT_WEBHOOK_SECRET = os.getenv("PRODINENT_WEBHOOK_SECRET", "").strip()
 
 # India Post retail parcel shipping.  The rate table is implemented from the
 # published tariff; the optional pincode endpoint is used only for state

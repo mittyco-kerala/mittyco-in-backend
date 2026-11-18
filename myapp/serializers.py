@@ -1114,7 +1114,25 @@ class OrderSerializer(
 
             "welcome_bonus_redemptions",
 
+            "prodinent_order_id",
+
+            "prodinent_status",
+
+            "prodinent_article_id",
+
+            "prodinent_tracking_link",
+
+            "prodinent_label_available",
+
         ]
+
+        read_only_fields = (
+            "prodinent_order_id",
+            "prodinent_status",
+            "prodinent_article_id",
+            "prodinent_tracking_link",
+            "prodinent_label_available",
+        )
 class AdminOrderSerializer(
     serializers.ModelSerializer
 ):

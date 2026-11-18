@@ -2,6 +2,7 @@ from django.urls import path
 from .import views
 from .views import ThrottledTokenRefreshView
 from .shipping_api import india_post_shipping_quote
+from .prodinent_webhook import prodinent_webhook
 
 urlpatterns = [
     path("health/", views.health_check),
@@ -35,6 +36,7 @@ urlpatterns = [
     path("cart/update/<int:id>/", views.update_cart_quantity),
     path("cart/remove/<int:id>/", views.remove_cart_item),
     path("shipping/quote/", india_post_shipping_quote, name="india-post-shipping-quote"),
+    path("prodinent/webhook/", prodinent_webhook, name="prodinent-webhook"),
     path("offer-status/", views.offer_status),
     path("offers/",views.get_offers),
     path( "offer-products/",views.offer_products),

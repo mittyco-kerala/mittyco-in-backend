@@ -67,7 +67,7 @@ class ProdinentService:
         return base_url, connection_key, timeout
 
     @classmethod
-    def _request(cls, method, path, *, payload=None, allow_write=False):
+    def _request(cls, method, path, *, payload=None, allow_write=False, response_type="json"):
         base_url, connection_key, timeout = cls._settings()
         if allow_write and not getattr(settings, "PRODINENT_LIVE_WRITES_ENABLED", False):
             raise ProdinentAPIError("Prodinent live writes are disabled.")
@@ -93,6 +93,20 @@ class ProdinentService:
                 "Prodinent is temporarily unavailable."
             ) from error
 
+        if not response.ok:
+            raise ProdinentAPIError(
+                "Prodinent rejected the request.",
+                status_code=response.status_code,
+            )
+        if response_type == "bytes":
+            content_type = str(response.headers.get("Content-Type", "")).lower()
+            if not content_type.startswith("application/pdf"):
+                raise ProdinentAPIError(
+                    "Prodinent returned an invalid label response.",
+                    status_code=response.status_code,
+                )
+            return response.content
+
         try:
             response_payload = response.json()
         except ValueError as error:
@@ -100,12 +114,6 @@ class ProdinentService:
                 "Prodinent returned an invalid response.",
                 status_code=response.status_code,
             ) from error
-
-        if not response.ok:
-            raise ProdinentAPIError(
-                "Prodinent rejected the request.",
-                status_code=response.status_code,
-            )
         if not isinstance(response_payload, dict):
             raise ProdinentAPIError(
                 "Prodinent returned an invalid response.",
@@ -147,10 +155,28 @@ class ProdinentService:
         )
 
     @classmethod
+    def assign_barcode(cls, external_order_id, *, assign_from_series=True):
+        payload = {"assignFromSeries": True} if assign_from_series else None
+        return cls._request(
+            "POST",
+            f"/orders/{cls._order_id(external_order_id)}/barcode",
+            payload=payload,
+            allow_write=True,
+        )
+
+    @classmethod
     def track_order(cls, external_order_id):
         return cls._request(
             "GET",
             f"/orders/{cls._order_id(external_order_id)}/tracking",
+        )
+
+    @classmethod
+    def download_label(cls, external_order_id):
+        return cls._request(
+            "GET",
+            f"/orders/{cls._order_id(external_order_id)}/label",
+            response_type="bytes",
         )
 
     @staticmethod
@@ -286,6 +312,10 @@ def build_order_payload(order, *, warehouse_id=None):
         "shipment": {"weightGrams": total_weight},
         "remarks": f"Mittyco order ORD-{int(order_id):06d}",
     }
+    if getattr(settings, "PRODINENT_AUTO_ASSIGN_BARCODE", False):
+        payload["assignFromSeries"] = True
+    if getattr(settings, "PRODINENT_AUTO_BOOK_SHIPMENT", False):
+        payload["book"] = True
     if selected_warehouse:
         payload["warehouseId"] = selected_warehouse
     return payload
@@ -296,6 +326,34 @@ def _provider_order(response):
     if not isinstance(provider_order, dict) or not provider_order.get("orderID"):
         raise ProdinentAPIError("Prodinent returned an incomplete order response.")
     return provider_order
+
+
+def _provider_record(response):
+    """Find the provider order/tracking record without trusting its shape."""
+
+    if not isinstance(response, dict):
+        raise ProdinentAPIError("Prodinent returned an invalid record.")
+    candidates = [response.get("order"), response.get("tracking"), response.get("data"), response]
+    for candidate in candidates:
+        if isinstance(candidate, dict):
+            nested_order = candidate.get("order")
+            if isinstance(nested_order, dict):
+                candidate = nested_order
+            if any(
+                key in candidate
+                for key in (
+                    "status",
+                    "trackingStatus",
+                    "articleId",
+                    "barcode",
+                    "trackingLink",
+                    "trackingUrl",
+                    "labelAvailable",
+                    "scans",
+                )
+            ):
+                return candidate
+    raise ProdinentAPIError("Prodinent returned an incomplete tracking response.")
 
 
 def apply_order_response(order, response):
@@ -323,6 +381,66 @@ def apply_order_response(order, response):
         )
     )
     return provider_order
+
+
+def apply_tracking_response(order, response):
+    """Persist tracking fields returned by a tracking call or webhook."""
+
+    record = _provider_record(response)
+    status_value = str(
+        record.get("status") or record.get("trackingStatus") or ""
+    ).strip()
+    article_id = str(
+        record.get("articleId") or record.get("barcode") or ""
+    ).strip()
+    tracking_link = str(
+        record.get("trackingLink") or record.get("trackingUrl") or ""
+    ).strip()
+    if not any((status_value, article_id, tracking_link, "labelAvailable" in record)):
+        raise ProdinentAPIError("Prodinent returned no tracking fields.")
+
+    if status_value:
+        order.prodinent_status = status_value[:40]
+    if article_id:
+        order.prodinent_article_id = article_id[:80]
+    if tracking_link:
+        order.prodinent_tracking_link = tracking_link[:500]
+    if "labelAvailable" in record:
+        order.prodinent_label_available = bool(record.get("labelAvailable"))
+    order.prodinent_last_error = None
+    order.prodinent_synced_at = timezone.now()
+    order.save(
+        update_fields=(
+            "prodinent_status",
+            "prodinent_article_id",
+            "prodinent_tracking_link",
+            "prodinent_label_available",
+            "prodinent_last_error",
+            "prodinent_synced_at",
+            "updated_at",
+        )
+    )
+    return record
+
+
+def local_order_status_for_prodinent(status, current_status):
+    """Map provider shipment states without overwriting unrelated local states."""
+
+    normalized = str(status or "").strip().casefold()
+    if not normalized or current_status == "Cancelled":
+        return current_status
+    if "out for delivery" in normalized:
+        return "Shipped"
+    if any(value in normalized for value in ("deliver", "received")):
+        return "Delivered"
+    if any(
+        value in normalized
+        for value in ("ship", "transit", "manifest", "dispatch")
+    ):
+        return "Shipped"
+    if any(value in normalized for value in ("cancel", "return")):
+        return "Cancelled"
+    return current_status
 
 
 def _record_sync_error(order_id, error):
@@ -392,5 +510,44 @@ def book_local_order_in_prodinent(order_id):
     except ProdinentAPIError as error:
         _record_sync_error(order.id, error)
         logger.exception("Prodinent booking failed for local order %s", order.id)
+        return None
+
+
+def assign_local_order_barcode_in_prodinent(order_id):
+    """Assign the next seller-series article to one local order."""
+
+    from .models import Order
+
+    order = Order.objects.get(pk=order_id)
+    external_order_id = f"ORD-{order.id:06d}"
+    try:
+        response = ProdinentService.assign_barcode(external_order_id)
+        apply_order_response(order, response)
+        return response
+    except ProdinentAPIError as error:
+        _record_sync_error(order.id, error)
+        logger.exception("Prodinent barcode assignment failed for local order %s", order.id)
+        return None
+
+
+def refresh_local_order_tracking(order_id):
+    """Refresh one local order from the provider's public tracking endpoint."""
+
+    from .models import Order
+
+    order = Order.objects.get(pk=order_id)
+    external_order_id = f"ORD-{order.id:06d}"
+    try:
+        response = ProdinentService.track_order(external_order_id)
+        record = apply_tracking_response(order, response)
+        status_value = str(record.get("status") or record.get("trackingStatus") or "")
+        local_status = local_order_status_for_prodinent(status_value, order.status)
+        if local_status != order.status:
+            order.status = local_status
+            order.save(update_fields=("status", "updated_at"))
+        return response
+    except ProdinentAPIError as error:
+        _record_sync_error(order.id, error)
+        logger.exception("Prodinent tracking refresh failed for local order %s", order.id)
         return None
 
