@@ -391,6 +391,19 @@ RAZORPAY_KEY_SECRET = os.getenv("RAZORPAY_KEY_SECRET", "").strip()
 RAZORPAY_WEBHOOK_SECRET = os.getenv("RAZORPAY_WEBHOOK_SECRET", "").strip()
 RAZORPAY_ORDER_CURRENCY = os.getenv("RAZORPAY_ORDER_CURRENCY", "INR").strip().upper()
 
+# Prodinent Partner API. Keep the bearer key on the backend only. Live writes
+# stay disabled until the integration has been verified in this deployment.
+PRODINENT_ENABLED = os.getenv("PRODINENT_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
+PRODINENT_BASE_URL = os.getenv(
+    "PRODINENT_BASE_URL", "https://api.prodinent.com/api/v1"
+).strip().rstrip("/")
+PRODINENT_CONNECTION_KEY = os.getenv("PRODINENT_CONNECTION_KEY", "").strip()
+PRODINENT_WAREHOUSE_ID = os.getenv("PRODINENT_WAREHOUSE_ID", "").strip()
+PRODINENT_TIMEOUT = float(os.getenv("PRODINENT_TIMEOUT", "15"))
+PRODINENT_LIVE_WRITES_ENABLED = os.getenv(
+    "PRODINENT_LIVE_WRITES_ENABLED", "false"
+).strip().lower() in {"1", "true", "yes", "on"}
+
 # India Post retail parcel shipping.  The rate table is implemented from the
 # published tariff; the optional pincode endpoint is used only for state
 # detection and requires the server IP to be whitelisted by India Post.
