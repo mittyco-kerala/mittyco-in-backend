@@ -21,6 +21,15 @@ SIGNATURE_HEADERS = (
     "HTTP_X_PRODINENT_SIGNATURE",
     "HTTP_X_POSTBRIDGE_SIGNATURE",
 )
+PROVIDER_TOKEN_SUFFIX_LENGTH = 9
+
+
+def _query_token_is_valid(token, secret):
+    if len(token) == len(secret):
+        return hmac.compare_digest(token, secret)
+    if len(token) != len(secret) + PROVIDER_TOKEN_SUFFIX_LENGTH:
+        return False
+    return hmac.compare_digest(token[: len(secret)], secret)
 
 
 def _signature_is_valid(request, raw_body):
@@ -43,7 +52,7 @@ def _signature_is_valid(request, raw_body):
     # secret/header. A long random query token keeps this endpoint private
     # without accepting unsigned public requests.
     token = str(request.GET.get("token") or "").strip()
-    return bool(token) and hmac.compare_digest(token, secret)
+    return bool(token) and _query_token_is_valid(token, secret)
 
 
 def _records(payload):
