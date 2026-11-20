@@ -43,10 +43,12 @@ def _signature_is_valid(request, raw_body):
     if received.startswith("sha256="):
         received = received[7:]
     if received:
-        if len(received) != 64:
-            return False
-        expected = hmac.new(secret.encode("utf-8"), raw_body, hashlib.sha256).hexdigest()
-        return hmac.compare_digest(received.lower(), expected.lower())
+        if len(received) == 64:
+            expected = hmac.new(secret.encode("utf-8"), raw_body, hashlib.sha256).hexdigest()
+            if hmac.compare_digest(received.lower(), expected.lower()):
+                return True
+        # Some provider deliveries include a non-HMAC signature identifier
+        # alongside the configured URL token. Fall through to token auth.
 
     # Prodinent's webhook form currently provides only a URL, not a signing
     # secret/header. A long random query token keeps this endpoint private
