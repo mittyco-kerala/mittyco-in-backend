@@ -20,6 +20,18 @@ class ProdinentWebhookTests(SimpleTestCase):
         self.assertEqual(response.status_code, 401)
 
     @override_settings(PRODINENT_WEBHOOK_SECRET="webhook-secret")
+    @patch("myapp.prodinent_webhook._find_order", return_value=None)
+    def test_accepts_provider_token_when_signature_header_is_unavailable(self, _find_order):
+        response = Client().post(
+            "/prodinent/webhook/?token=webhook-secret",
+            data=json.dumps({"externalOrderId": "ORD-000001", "status": "Manifested"}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"received": True, "matched": False})
+
+    @override_settings(PRODINENT_WEBHOOK_SECRET="webhook-secret")
     @patch("myapp.prodinent_webhook.transaction.atomic", return_value=nullcontext())
     @patch("myapp.prodinent_webhook.apply_tracking_response")
     @patch("myapp.prodinent_webhook._find_order")

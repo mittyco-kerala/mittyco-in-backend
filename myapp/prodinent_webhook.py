@@ -33,10 +33,17 @@ def _signature_is_valid(request, raw_body):
     )
     if received.startswith("sha256="):
         received = received[7:]
-    if not received or len(received) != 64:
-        return False
-    expected = hmac.new(secret.encode("utf-8"), raw_body, hashlib.sha256).hexdigest()
-    return hmac.compare_digest(received.lower(), expected.lower())
+    if received:
+        if len(received) != 64:
+            return False
+        expected = hmac.new(secret.encode("utf-8"), raw_body, hashlib.sha256).hexdigest()
+        return hmac.compare_digest(received.lower(), expected.lower())
+
+    # Prodinent's webhook form currently provides only a URL, not a signing
+    # secret/header. A long random query token keeps this endpoint private
+    # without accepting unsigned public requests.
+    token = str(request.GET.get("token") or "").strip()
+    return bool(token) and hmac.compare_digest(token, secret)
 
 
 def _records(payload):
