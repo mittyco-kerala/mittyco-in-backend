@@ -440,6 +440,25 @@ INDIA_POST_ESTIMATED_DELIVERY = os.getenv(
     "INDIA_POST_ESTIMATED_DELIVERY", "4-5 business days"
 ).strip()
 
+# Optional direct Department of Posts tariff quote. Keep disabled until the
+# production credentials, contracted service, and packed parcel size are set.
+INDIA_POST_DIRECT_TARIFF_ENABLED = os.getenv(
+    "INDIA_POST_DIRECT_TARIFF_ENABLED", "false"
+).strip().lower() in {"1", "true", "yes", "on"}
+INDIA_POST_API_BASE_URL = os.getenv(
+    "INDIA_POST_API_BASE_URL",
+    "https://app.indiapost.gov.in/beextcustomer/v1",
+).strip().rstrip("/")
+INDIA_POST_API_USERNAME = os.getenv("INDIA_POST_API_USERNAME", "").strip()
+INDIA_POST_API_PASSWORD = os.getenv("INDIA_POST_API_PASSWORD", "")
+INDIA_POST_API_TIMEOUT = float(os.getenv("INDIA_POST_API_TIMEOUT", "12"))
+INDIA_POST_TARIFF_SERVICE = os.getenv(
+    "INDIA_POST_TARIFF_SERVICE", ""
+).strip().lower()
+INDIA_POST_PARCEL_LENGTH_CM = os.getenv("INDIA_POST_PARCEL_LENGTH_CM", "").strip()
+INDIA_POST_PARCEL_WIDTH_CM = os.getenv("INDIA_POST_PARCEL_WIDTH_CM", "").strip()
+INDIA_POST_PARCEL_HEIGHT_CM = os.getenv("INDIA_POST_PARCEL_HEIGHT_CM", "").strip()
+
 # Legacy Stripe settings remain available for historical checkout records.
 
 STRIPE_PUBLISHABLE_KEY = os.getenv("STRIPE_PUBLISHABLE_KEY")

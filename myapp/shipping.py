@@ -122,7 +122,11 @@ def _configured_free_delivery_radius_km():
         radius = float(raw_value)
     except (TypeError, ValueError):
         radius = DEFAULT_FREE_DELIVERY_RADIUS_KM
-    return radius if math.isfinite(radius) and radius >= 0 else DEFAULT_FREE_DELIVERY_RADIUS_KM
+    if not math.isfinite(radius) or radius < 0:
+        return DEFAULT_FREE_DELIVERY_RADIUS_KM
+    # Local free delivery must never exceed the 5 km limit requested by the
+    # merchant, even if an older server environment contains a larger value.
+    return min(radius, DEFAULT_FREE_DELIVERY_RADIUS_KM)
 
 
 def _valid_pincode(value):
@@ -190,6 +194,33 @@ def calculate_cart_weight_grams(cart_items):
         except (TypeError, ValueError):
             quantity = 0
         total += max(quantity, 0) * item_shipping_weight_grams(item)
+    return total
+
+
+def calculate_packed_cart_weight_grams(cart_items):
+    """Require explicitly configured packed weights for direct DOP pricing."""
+
+    total = 0
+    for item in cart_items:
+        variant = getattr(item, "variant", None)
+        variant_unit = getattr(item, "variant_unit", None)
+        weight = getattr(variant_unit, "shipping_weight_grams", None) if variant_unit else None
+        if weight is None:
+            weight = getattr(variant, "shipping_weight_grams", None)
+        try:
+            weight = int(weight)
+            quantity = int(getattr(item, "quantity", 0) or 0)
+        except (TypeError, ValueError):
+            weight = 0
+            quantity = 0
+        if weight < 1 or quantity < 1:
+            raise IndiaPostShippingError(
+                "Packed shipping weights are missing for one or more products. "
+                "Please contact the store before placing this order."
+            )
+        total += weight * quantity
+    if total < 1 or total > MAX_PARCEL_WEIGHT_GRAMS:
+        raise IndiaPostShippingError("Parcel weight must be between 1 g and 35 kg.")
     return total
 
 
@@ -378,6 +409,7 @@ def calculate_cart_shipping(cart_items, address):
             "service": "Mittyco Local Delivery",
             "gst_rate": "0",
             "free_delivery": True,
+            "tariff_source": "mittyco_local_free_delivery",
             "distance_km": f"{distance_km:.2f}",
             "free_delivery_radius_km": f"{free_delivery_radius_km:.2f}",
         }
@@ -390,6 +422,42 @@ def calculate_cart_shipping(cart_items, address):
                     "INDIA_POST_ESTIMATED_DELIVERY",
                     "4-5 business days",
                 ),
+            }
+        )
+        return quote
+
+    if getattr(settings, "INDIA_POST_DIRECT_TARIFF_ENABLED", False):
+        dimensions = {
+            "length_cm": getattr(settings, "INDIA_POST_PARCEL_LENGTH_CM", ""),
+            "width_cm": getattr(settings, "INDIA_POST_PARCEL_WIDTH_CM", ""),
+            "height_cm": getattr(settings, "INDIA_POST_PARCEL_HEIGHT_CM", ""),
+        }
+        if not all(str(value or "").strip() for value in dimensions.values()):
+            raise IndiaPostShippingError(
+                "India Post parcel dimensions are not configured on the server."
+            )
+        weight = calculate_packed_cart_weight_grams(cart_items)
+        from .india_post_tariff import IndiaPostTariffClient
+
+        quote = IndiaPostTariffClient.calculate_quote(
+            service=getattr(settings, "INDIA_POST_TARIFF_SERVICE", ""),
+            weight_grams=weight,
+            source_pincode=origin_pincode,
+            destination_pincode=destination_pincode,
+            **dimensions,
+        )
+        quote.update(
+            {
+                "origin_pincode": origin_pincode,
+                "destination_pincode": destination_pincode,
+                "estimated_delivery_time": getattr(
+                    settings,
+                    "INDIA_POST_ESTIMATED_DELIVERY",
+                    "4-5 business days",
+                ),
+                "free_delivery": False,
+                "distance_km": f"{distance_km:.2f}" if distance_km is not None else None,
+                "free_delivery_radius_km": f"{free_delivery_radius_km:.2f}",
             }
         )
         return quote
@@ -410,6 +478,7 @@ def calculate_cart_shipping(cart_items, address):
             "destination_pincode": destination_pincode,
             "estimated_delivery_time": getattr(settings, "INDIA_POST_ESTIMATED_DELIVERY", "4-5 business days"),
             "free_delivery": False,
+            "tariff_source": "local_published_rate_estimate",
             "distance_km": f"{distance_km:.2f}" if distance_km is not None else None,
             "free_delivery_radius_km": f"{free_delivery_radius_km:.2f}",
         }
