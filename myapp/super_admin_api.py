@@ -528,13 +528,34 @@ class AdminIndiaPostBarcodeSeriesSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         if self.instance:
-            forbidden = set(attrs) - {"name", "is_active"}
+            editable_fields = {
+                "name",
+                "is_active",
+                "booking_office_id",
+                "booking_office_name",
+                "dropoff_pincode",
+            }
+            forbidden = set(attrs) - editable_fields
             if forbidden:
                 raise serializers.ValidationError(
                     "Allocated barcode details and the next unused number cannot be edited."
                 )
             if attrs.get("is_active") and self.instance.next_number > self.instance.last_number:
                 raise serializers.ValidationError({"is_active": "This barcode series is exhausted."})
+            office_details = {
+                field: attrs.get(field, getattr(self.instance, field))
+                for field in ("booking_office_id", "booking_office_name", "dropoff_pincode")
+            }
+            if any(office_details.values()) and not all(office_details.values()):
+                raise serializers.ValidationError(
+                    {"booking_office_id": "Enter the office ID, office name, and drop-off PIN together, or leave all three blank."}
+                )
+            office_id = office_details["booking_office_id"]
+            if office_id and (not office_id.isdigit() or len(office_id) != 8):
+                raise serializers.ValidationError({"booking_office_id": "Enter the 8-digit DOP post office ID."})
+            dropoff_pincode = office_details["dropoff_pincode"]
+            if dropoff_pincode and (not dropoff_pincode.isdigit() or len(dropoff_pincode) != 6):
+                raise serializers.ValidationError({"dropoff_pincode": "Enter the 6-digit drop-off PIN code."})
             return attrs
 
         first_number = attrs.get("first_number")

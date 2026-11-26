@@ -318,6 +318,13 @@ def build_bp_booking_payload(order, barcode, series):
         raise IndiaPostFulfillmentError("Configure the 10-digit India Post bulk customer ID.")
     if not re.fullmatch(r"[A-Z]{2}\d{9}IN", str(barcode or "")):
         raise IndiaPostFulfillmentError("The DOP-allocated article barcode is invalid.")
+    office_id = str(getattr(series, "booking_office_id", "") or "").strip()
+    office_name = str(getattr(series, "booking_office_name", "") or "").strip()
+    dropoff_pincode = str(getattr(series, "dropoff_pincode", "") or "").strip()
+    if not re.fullmatch(r"\d{8}", office_id) or not office_name or not re.fullmatch(r"\d{6}", dropoff_pincode):
+        raise IndiaPostFulfillmentError(
+            "Add the DOP booking office ID, office name, and drop-off PIN to the barcode series before booking."
+        )
 
     shape = str(getattr(settings, "INDIA_POST_SHAPE_OF_ARTICLE", "NROL") or "NROL").upper()
     if shape not in {"NROL", "ROLL"}:
@@ -328,7 +335,7 @@ def build_bp_booking_payload(order, barcode, series):
         "contract_id": series.contract_id,
         "barcode_no": barcode,
         "pickup_or_dropoff": "DROPOFF",
-        "pickup_dropoff_office_id": int(series.booking_office_id),
+        "pickup_dropoff_office_id": int(office_id),
         "article_type": "BP",
         "physical_weight": weight,
         "shape_of_article": shape,
@@ -364,7 +371,7 @@ def build_bp_booking_payload(order, barcode, series):
         "receiver_tax_reference": "",
         "alt_address_flag": "FALSE",
         "pickup_address_flag": "FALSE",
-        "drop_off_pincode": series.dropoff_pincode,
+        "drop_off_pincode": dropoff_pincode,
         "sender_mobile_no": sender["mobile"],
         "receiver_mobile_no": recipient["mobile"],
         "prepayment_code": "",

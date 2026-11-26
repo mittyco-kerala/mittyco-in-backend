@@ -1004,9 +1004,9 @@ class IndiaPostBarcodeSeries(models.Model):
     allocation_start = models.PositiveIntegerField(null=True, blank=True)
     next_number = models.PositiveIntegerField()
     last_number = models.PositiveIntegerField()
-    booking_office_id = models.CharField(max_length=8)
-    booking_office_name = models.CharField(max_length=100)
-    dropoff_pincode = models.CharField(max_length=6)
+    booking_office_id = models.CharField(max_length=8, blank=True, default="")
+    booking_office_name = models.CharField(max_length=100, blank=True, default="")
+    dropoff_pincode = models.CharField(max_length=6, blank=True, default="")
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -1034,9 +1034,12 @@ class IndiaPostBarcodeSeries(models.Model):
             100_000_000 <= self.next_number <= self.last_number <= 999_999_999
         ):
             errors["next_number"] = "Enter a valid unused 9-digit barcode range."
-        if not self.booking_office_id.isdigit() or len(self.booking_office_id) != 8:
+        office_details = (self.booking_office_id, self.booking_office_name, self.dropoff_pincode)
+        if any(office_details) and not all(office_details):
+            errors["booking_office_id"] = "Enter all booking office details together, or leave them blank until booking setup."
+        if self.booking_office_id and (not self.booking_office_id.isdigit() or len(self.booking_office_id) != 8):
             errors["booking_office_id"] = "Enter the 8-digit DOP post office ID."
-        if not self.dropoff_pincode.isdigit() or len(self.dropoff_pincode) != 6:
+        if self.dropoff_pincode and (not self.dropoff_pincode.isdigit() or len(self.dropoff_pincode) != 6):
             errors["dropoff_pincode"] = "Enter the 6-digit drop-off PIN code."
         if errors:
             raise ValidationError(errors)
