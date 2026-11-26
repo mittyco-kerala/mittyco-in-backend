@@ -1023,17 +1023,18 @@ class IndiaPostBarcodeSeries(models.Model):
             errors["contract_id"] = "Enter the 8-digit India Post BP contract ID."
         if not re.fullmatch(r"[A-Z]{2}", self.barcode_prefix or ""):
             errors["barcode_prefix"] = "Use the two uppercase letters allocated by India Post."
-        if not (100_000_000 <= self.next_number <= 1_000_000_000):
-            errors["next_number"] = "Enter a valid unused 9-digit barcode range."
+        if not (0 <= self.next_number <= 100_000_000):
+            errors["next_number"] = "Enter a valid unused 8-digit India Post serial range."
         if self.allocation_start is not None and not (
-            100_000_000 <= self.allocation_start <= self.last_number <= 999_999_999
-            and self.allocation_start <= self.next_number
+            0 <= self.allocation_start <= self.last_number <= 99_999_999
+            and self.allocation_start <= self.next_number <= self.last_number + 1
         ):
             errors["allocation_start"] = "Enter a valid India Post allocated barcode range."
         elif self.allocation_start is None and not (
-            100_000_000 <= self.next_number <= self.last_number <= 999_999_999
+            0 <= self.next_number <= self.last_number + 1
+            and 0 <= self.last_number <= 99_999_999
         ):
-            errors["next_number"] = "Enter a valid unused 9-digit barcode range."
+            errors["next_number"] = "Enter a valid unused 8-digit India Post serial range."
         office_details = (self.booking_office_id, self.booking_office_name, self.dropoff_pincode)
         if any(office_details) and not all(office_details):
             errors["booking_office_id"] = "Enter all booking office details together, or leave them blank until booking setup."

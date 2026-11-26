@@ -75,6 +75,7 @@ from .india_post_fulfillment import (
     download_local_order_india_post_label,
     refresh_local_order_india_post_tracking,
 )
+from .india_post_barcode import barcode_serial_candidates
 
 
 class SuperAdminPagination(PageNumberPagination):
@@ -487,7 +488,7 @@ class AdminModelViewSet(viewsets.ModelViewSet):
 
 
 class AdminIndiaPostBarcodeSeriesSerializer(serializers.ModelSerializer):
-    first_number = serializers.IntegerField(write_only=True, required=False, min_value=100_000_000, max_value=999_999_999)
+    first_number = serializers.IntegerField(write_only=True, required=False, min_value=0, max_value=99_999_999)
     remaining_count = serializers.SerializerMethodField()
 
     class Meta:
@@ -570,7 +571,11 @@ class AdminIndiaPostBarcodeSeriesSerializer(serializers.ModelSerializer):
             "allocation_start", "next_number", "last_number"
         )
         for series in existing:
-            allocated_start = series.allocation_start or series.next_number
+            allocated_start = (
+                series.allocation_start
+                if series.allocation_start is not None
+                else series.next_number
+            )
             if last_number is not None and first_number <= series.last_number and allocated_start <= last_number:
                 raise serializers.ValidationError({"first_number": "This number range overlaps another saved series with the same prefix."})
 
@@ -578,8 +583,10 @@ class AdminIndiaPostBarcodeSeriesSerializer(serializers.ModelSerializer):
         # saved allocation_start value.
         for barcode in Order.objects.exclude(india_post_barcode="").values_list("india_post_barcode", flat=True):
             if barcode.startswith(prefix) and barcode.endswith("IN"):
-                serial = barcode[2:-2]
-                if serial.isdigit() and first_number <= int(serial) <= (last_number or 0):
+                if any(
+                    first_number <= serial <= (last_number or 0)
+                    for serial in barcode_serial_candidates(barcode)
+                ):
                     raise serializers.ValidationError({"first_number": "This range contains a barcode already assigned to an order."})
 
         candidate = IndiaPostBarcodeSeries(

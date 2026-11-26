@@ -20,6 +20,7 @@ from django.db.models import F
 from django.utils import timezone
 
 from .india_post_tariff import IndiaPostTariffClient
+from .india_post_barcode import is_valid_s10_barcode, make_s10_barcode
 from .models import IndiaPostBarcodeSeries, Order, ProductVariant
 
 
@@ -316,7 +317,7 @@ def build_bp_booking_payload(order, barcode, series):
     ).strip()
     if not re.fullmatch(r"\d{10}", bulk_customer_id):
         raise IndiaPostFulfillmentError("Configure the 10-digit India Post bulk customer ID.")
-    if not re.fullmatch(r"[A-Z]{2}\d{9}IN", str(barcode or "")):
+    if not is_valid_s10_barcode(barcode):
         raise IndiaPostFulfillmentError("The DOP-allocated article barcode is invalid.")
     office_id = str(getattr(series, "booking_office_id", "") or "").strip()
     office_name = str(getattr(series, "booking_office_name", "") or "").strip()
@@ -468,7 +469,7 @@ def _claim_barcode(order_id, series_id=None):
             raise IndiaPostFulfillmentError("The active India Post barcode series is invalid.") from error
         if series.next_number > series.last_number:
             raise IndiaPostFulfillmentError("The active India Post barcode series is exhausted.")
-        barcode = f"{series.barcode_prefix}{series.next_number:09d}IN"
+        barcode = make_s10_barcode(series.barcode_prefix, series.next_number)
         if Order.objects.filter(india_post_barcode=barcode).exclude(pk=order.pk).exists():
             raise IndiaPostFulfillmentError("This barcode is already assigned to another order.")
         series.next_number += 1
@@ -557,7 +558,7 @@ def book_local_order_in_india_post(order_id):
         series_id = series.pk
     # Validate address, packed weight, dimensions, and sender config before
     # reserving a barcode from the scarce DOP-allocated range.
-    build_bp_booking_payload(order, "AA100000000IN", series)
+    build_bp_booking_payload(order, make_s10_barcode("AA", 10_000_000), series)
     order, barcode, series = _claim_barcode(order.id, series_id=series_id)
     if not barcode:
         return {"barcode": "", "duplicate": True}
