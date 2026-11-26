@@ -22,6 +22,7 @@ from django.utils import timezone
 from .india_post_tariff import IndiaPostTariffClient
 from .india_post_barcode import is_valid_s10_barcode, make_s10_barcode
 from .models import IndiaPostBarcodeSeries, Order, ProductVariant
+from .shipping_integration_config import get_shipping_setting
 
 
 logger = logging.getLogger(__name__)
@@ -119,8 +120,8 @@ class IndiaPostDirectAPI:
     @classmethod
     def book_article(cls, customer_id, article):
         if not (
-            getattr(settings, "INDIA_POST_FULFILLMENT_ENABLED", False)
-            and getattr(settings, "INDIA_POST_LIVE_BOOKING_ENABLED", False)
+            get_shipping_setting("INDIA_POST_FULFILLMENT_ENABLED", False)
+            and get_shipping_setting("INDIA_POST_LIVE_BOOKING_ENABLED", False)
         ):
             raise IndiaPostFulfillmentError("India Post live booking is disabled.")
         if not re.fullmatch(r"\d{10}", str(customer_id or "")):
@@ -133,7 +134,7 @@ class IndiaPostDirectAPI:
 
     @classmethod
     def tracking(cls, barcodes):
-        if not getattr(settings, "INDIA_POST_FULFILLMENT_ENABLED", False):
+        if not get_shipping_setting("INDIA_POST_FULFILLMENT_ENABLED", False):
             raise IndiaPostFulfillmentError("India Post fulfilment is disabled.")
         if not barcodes or len(barcodes) > 500:
             raise IndiaPostFulfillmentError("Tracking accepts 1 to 500 article barcodes.")
@@ -145,7 +146,7 @@ class IndiaPostDirectAPI:
 
     @classmethod
     def create_label(cls, label_payload):
-        if not getattr(settings, "INDIA_POST_FULFILLMENT_ENABLED", False):
+        if not get_shipping_setting("INDIA_POST_FULFILLMENT_ENABLED", False):
             raise IndiaPostFulfillmentError("India Post fulfilment is disabled.")
         url = f"{IndiaPostTariffClient._base_url()}/label/create/domestic"
         token = IndiaPostTariffClient._access_token()
@@ -172,7 +173,7 @@ class IndiaPostDirectAPI:
 
 
 def _required_setting(name, label):
-    value = str(getattr(settings, name, "") or "").strip()
+    value = str(get_shipping_setting(name, "") or "").strip()
     if not value:
         raise IndiaPostFulfillmentError(f"Configure {label} on the backend first.")
     return value
@@ -211,7 +212,7 @@ def _parcel_dimensions():
         ("breadth_diameter", "INDIA_POST_PARCEL_WIDTH_CM", "parcel width"),
         ("height", "INDIA_POST_PARCEL_HEIGHT_CM", "parcel height"),
     ):
-        raw = str(getattr(settings, setting_name, "") or "").strip()
+        raw = str(get_shipping_setting(setting_name, "") or "").strip()
         try:
             value = Decimal(raw)
         except (InvalidOperation, TypeError, ValueError):
@@ -262,9 +263,9 @@ def _sender_profile():
     address = "\n".join(
         value
         for value in (
-            str(getattr(settings, "INDIA_POST_SENDER_ADDRESS_LINE1", "") or "").strip(),
-            str(getattr(settings, "INDIA_POST_SENDER_ADDRESS_LINE2", "") or "").strip(),
-            str(getattr(settings, "INDIA_POST_SENDER_ADDRESS_LINE3", "") or "").strip(),
+            str(get_shipping_setting("INDIA_POST_SENDER_ADDRESS_LINE1", "") or "").strip(),
+            str(get_shipping_setting("INDIA_POST_SENDER_ADDRESS_LINE2", "") or "").strip(),
+            str(get_shipping_setting("INDIA_POST_SENDER_ADDRESS_LINE3", "") or "").strip(),
         )
         if value
     )
@@ -274,7 +275,7 @@ def _sender_profile():
         "company": company[:80],
         "address_lines": lines,
         "city": city[:80],
-        "state": str(getattr(settings, "INDIA_POST_SENDER_STATE", "") or "").strip()[:80],
+        "state": str(get_shipping_setting("INDIA_POST_SENDER_STATE", "") or "").strip()[:80],
         "pincode": pincode,
         "mobile": mobile,
     }
@@ -316,7 +317,7 @@ def build_bp_booking_payload(order, barcode, series):
     weight = _order_weight_grams(order)
     dimensions = _parcel_dimensions()
     bulk_customer_id = str(
-        getattr(settings, "INDIA_POST_BULK_CUSTOMER_ID", "")
+        get_shipping_setting("INDIA_POST_BULK_CUSTOMER_ID", "")
         or getattr(settings, "INDIA_POST_API_USERNAME", "")
         or ""
     ).strip()
@@ -332,7 +333,7 @@ def build_bp_booking_payload(order, barcode, series):
             "Add the DOP booking office ID, office name, and drop-off PIN to the barcode series before booking."
         )
 
-    shape = str(getattr(settings, "INDIA_POST_SHAPE_OF_ARTICLE", "NROL") or "NROL").upper()
+    shape = str(get_shipping_setting("INDIA_POST_SHAPE_OF_ARTICLE", "NROL") or "NROL").upper()
     if shape not in {"NROL", "ROLL"}:
         raise IndiaPostFulfillmentError("Business Parcel shape must be NROL or ROLL.")
 
@@ -518,9 +519,9 @@ def _finish_booking(order_id, *, booking_status, error="", reference=""):
 def book_local_order_in_india_post(order_id):
     """Book one paid BP order, using a DOP-allocated barcode exactly once."""
 
-    if not getattr(settings, "INDIA_POST_FULFILLMENT_ENABLED", False):
+    if not get_shipping_setting("INDIA_POST_FULFILLMENT_ENABLED", False):
         raise IndiaPostFulfillmentError("India Post fulfilment is disabled.")
-    if not getattr(settings, "INDIA_POST_LIVE_BOOKING_ENABLED", False):
+    if not get_shipping_setting("INDIA_POST_LIVE_BOOKING_ENABLED", False):
         raise IndiaPostFulfillmentError("India Post live booking is disabled.")
 
     order = Order.objects.select_related("address", "user").get(pk=order_id)
@@ -717,7 +718,7 @@ def _label_payload(order):
     quote = order.shipping_quote if isinstance(order.shipping_quote, dict) else {}
     return {
         "customer_id": int(
-            getattr(settings, "INDIA_POST_BULK_CUSTOMER_ID", "")
+            get_shipping_setting("INDIA_POST_BULK_CUSTOMER_ID", "")
             or getattr(settings, "INDIA_POST_API_USERNAME", "")
         ),
         "destination_pin": recipient["pincode"],
@@ -725,7 +726,7 @@ def _label_payload(order):
         "channel_type": "E",
         "user_type": "R",
         "user_id": int(
-            getattr(settings, "INDIA_POST_BULK_CUSTOMER_ID", "")
+            get_shipping_setting("INDIA_POST_BULK_CUSTOMER_ID", "")
             or getattr(settings, "INDIA_POST_API_USERNAME", "")
         ),
         "barcode_no": order.india_post_barcode,
@@ -755,7 +756,7 @@ def _label_payload(order):
         "sender_city": sender["city"],
         "sender_pin": sender["pincode"],
         "sender_state": sender["state"],
-        "transmission_mode": str(getattr(settings, "INDIA_POST_LABEL_TRANSMISSION_MODE", "S") or "S").upper(),
+        "transmission_mode": str(get_shipping_setting("INDIA_POST_LABEL_TRANSMISSION_MODE", "S") or "S").upper(),
         "payment_mode": "CO",
         "booking_office_name": office_name,
         "booking_office_pin": office_pin,
@@ -779,8 +780,9 @@ def sync_order_to_shipping_provider(order_id):
     """Dispatch paid-order fulfilment to the provider selected in settings."""
 
     order = Order.objects.get(pk=order_id)
-    if order.fulfillment_provider == "india_post":
-        if getattr(settings, "INDIA_POST_AUTO_BOOKING_ENABLED", False):
+    provider = get_shipping_setting("SHIPPING_FULFILLMENT_PROVIDER", "prodinent")
+    if provider == "india_post" and order.fulfillment_provider == "india_post":
+        if get_shipping_setting("INDIA_POST_AUTO_BOOKING_ENABLED", False):
             quote = order.shipping_quote if isinstance(order.shipping_quote, dict) else {}
             if quote.get("free_delivery") or quote.get("tariff_source") != "india_post_api":
                 return None
@@ -792,6 +794,8 @@ def sync_order_to_shipping_provider(order_id):
                     updated_at=timezone.now(),
                 )
                 logger.warning("Automatic India Post booking was not completed for order %s", order_id)
+        return None
+    if provider != "prodinent" or order.fulfillment_provider != "prodinent":
         return None
     from .prodinent import sync_order_to_prodinent
 

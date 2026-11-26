@@ -35,6 +35,7 @@ from myapp.utils import (
     get_applicable_offer,
 )
 from myapp.shipping import calculate_cart_shipping
+from myapp.shipping_integration_config import get_shipping_setting
 from myapp.welcome_bonus import (
     calculate_welcome_bonus_price,
     get_eligible_welcome_bonus_assignment,
@@ -480,7 +481,7 @@ def fulfill_checkout(checkout, *, checkout_model, payment_method):
         status="Processing",
         fulfillment_provider=(
             "india_post"
-            if getattr(settings, "SHIPPING_FULFILLMENT_PROVIDER", "prodinent") == "india_post"
+            if get_shipping_setting("SHIPPING_FULFILLMENT_PROVIDER", "prodinent") == "india_post"
             else "prodinent"
         ),
         shipping_quote=snapshot.get("shipping_quote") or {},

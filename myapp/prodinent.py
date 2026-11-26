@@ -13,6 +13,7 @@ import logging
 import requests
 
 from django.conf import settings
+from .shipping_integration_config import prodinent_is_enabled_for_new_actions
 from django.utils import timezone
 
 from .shipping import lookup_pincode_state
@@ -36,7 +37,7 @@ class ProdinentService:
 
     @classmethod
     def _settings(cls):
-        enabled = bool(getattr(settings, "PRODINENT_ENABLED", False))
+        enabled = prodinent_is_enabled_for_new_actions()
         base_url = str(
             getattr(
                 settings,
@@ -69,7 +70,10 @@ class ProdinentService:
     @classmethod
     def _request(cls, method, path, *, payload=None, allow_write=False, response_type="json"):
         base_url, connection_key, timeout = cls._settings()
-        if allow_write and not getattr(settings, "PRODINENT_LIVE_WRITES_ENABLED", False):
+        if allow_write and (
+            not prodinent_is_enabled_for_new_actions()
+            or not getattr(settings, "PRODINENT_LIVE_WRITES_ENABLED", False)
+        ):
             raise ProdinentAPIError("Prodinent live writes are disabled.")
 
         headers = {
@@ -458,7 +462,7 @@ def sync_order_to_prodinent(order_id):
     """Create a paid local order in Prodinent when live writes are enabled."""
 
     if not (
-        getattr(settings, "PRODINENT_ENABLED", False)
+        prodinent_is_enabled_for_new_actions()
         and getattr(settings, "PRODINENT_LIVE_WRITES_ENABLED", False)
     ):
         return None

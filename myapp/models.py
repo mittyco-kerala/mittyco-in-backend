@@ -1049,6 +1049,31 @@ class IndiaPostBarcodeSeries(models.Model):
         return f"{self.name} ({self.barcode_prefix}, BP)"
 
 
+class ShippingIntegrationConfig(models.Model):
+    """Singleton store for non-secret shipping controls configured in the dashboard."""
+
+    values = models.JSONField(default=dict, blank=True)
+    updated_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="shipping_integration_config_updates",
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Shipping integration configuration"
+        verbose_name_plural = "Shipping integration configuration"
+
+    def save(self, *args, **kwargs):
+        self.pk = 1
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return "Shipping integration configuration"
+
+
 class Invoice(models.Model):
     """The invoice header issued for a paid order.
 

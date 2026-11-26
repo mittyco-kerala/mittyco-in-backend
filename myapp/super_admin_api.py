@@ -57,6 +57,7 @@ from .models import (
     IndiaPostBarcodeSeries,
 )
 from .permissions import IsSuperAdmin
+from .shipping_integration_config import get_shipping_setting, prodinent_is_enabled_for_new_actions
 from .catalog_pricing import get_product_price_values
 from .serializers import CouponSerializer
 from .sku import unique_sku, unit_sku_base, variant_sku_base
@@ -1189,7 +1190,7 @@ class AdminOrderViewSet(AdminModelViewSet):
     @action(detail=True, methods=("post",), url_path="prodinent-sync")
     def prodinent_sync(self, request, pk=None):
         if not (
-            getattr(settings, "PRODINENT_ENABLED", False)
+            prodinent_is_enabled_for_new_actions()
             and getattr(settings, "PRODINENT_LIVE_WRITES_ENABLED", False)
         ):
             return Response(
@@ -1214,7 +1215,7 @@ class AdminOrderViewSet(AdminModelViewSet):
     @action(detail=True, methods=("post",), url_path="prodinent-book")
     def prodinent_book(self, request, pk=None):
         if not (
-            getattr(settings, "PRODINENT_ENABLED", False)
+            prodinent_is_enabled_for_new_actions()
             and getattr(settings, "PRODINENT_LIVE_WRITES_ENABLED", False)
         ):
             return Response(
@@ -1244,7 +1245,7 @@ class AdminOrderViewSet(AdminModelViewSet):
     @action(detail=True, methods=("post",), url_path="prodinent-barcode")
     def prodinent_barcode(self, request, pk=None):
         if not (
-            getattr(settings, "PRODINENT_ENABLED", False)
+            prodinent_is_enabled_for_new_actions()
             and getattr(settings, "PRODINENT_LIVE_WRITES_ENABLED", False)
         ):
             return Response(
@@ -1297,7 +1298,7 @@ class AdminOrderViewSet(AdminModelViewSet):
 
     @action(detail=True, methods=("post",), url_path="prodinent-track")
     def prodinent_track(self, request, pk=None):
-        if not getattr(settings, "PRODINENT_ENABLED", False):
+        if not prodinent_is_enabled_for_new_actions():
             return Response(
                 {"message": "Prodinent integration is disabled."},
                 status=status.HTTP_409_CONFLICT,
@@ -1334,8 +1335,8 @@ class AdminOrderViewSet(AdminModelViewSet):
     @action(detail=True, methods=("post",), url_path="india-post-book")
     def india_post_book(self, request, pk=None):
         if not (
-            getattr(settings, "INDIA_POST_FULFILLMENT_ENABLED", False)
-            and getattr(settings, "INDIA_POST_LIVE_BOOKING_ENABLED", False)
+            get_shipping_setting("INDIA_POST_FULFILLMENT_ENABLED", False)
+            and get_shipping_setting("INDIA_POST_LIVE_BOOKING_ENABLED", False)
         ):
             return Response({"message": "India Post live booking is disabled."}, status=409)
         order = self.get_object()

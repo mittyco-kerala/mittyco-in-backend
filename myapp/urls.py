@@ -3,6 +3,12 @@ from .import views
 from .views import ThrottledTokenRefreshView
 from .shipping_api import india_post_shipping_quote
 from .prodinent_webhook import prodinent_webhook
+from .india_post_settings_api import (
+    IndiaPostConnectionTestView,
+    IndiaPostOfficeSearchView,
+    IndiaPostSettingsView,
+    IndiaPostTariffTestView,
+)
 
 urlpatterns = [
     path("health/", views.health_check),
@@ -197,6 +203,10 @@ urlpatterns += router.urls
 urlpatterns += [
     path("admin/manage/schema/", SuperAdminSchemaView.as_view(), name="super-admin-schema"),
     path("admin/manage/overview/", SuperAdminOverviewView.as_view(), name="super-admin-overview"),
+    path("admin/manage/india-post-settings/", IndiaPostSettingsView.as_view(), name="india-post-settings"),
+    path("admin/manage/india-post-settings/test-connection/", IndiaPostConnectionTestView.as_view(), name="india-post-test-connection"),
+    path("admin/manage/india-post-settings/test-tariff/", IndiaPostTariffTestView.as_view(), name="india-post-test-tariff"),
+    path("admin/manage/india-post-settings/post-offices/", IndiaPostOfficeSearchView.as_view(), name="india-post-post-offices"),
 ]
 
 # Strictly protected order-management API for the Support Order Dashboard.

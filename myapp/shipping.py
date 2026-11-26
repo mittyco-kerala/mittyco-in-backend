@@ -17,6 +17,8 @@ from urllib.request import Request, urlopen
 
 from django.conf import settings
 
+from .shipping_integration_config import get_shipping_setting
+
 
 logger = logging.getLogger(__name__)
 
@@ -113,8 +115,7 @@ def is_within_free_delivery_radius(
 
 
 def _configured_free_delivery_radius_km():
-    raw_value = getattr(
-        settings,
+    raw_value = get_shipping_setting(
         "INDIA_POST_FREE_DELIVERY_RADIUS_KM",
         DEFAULT_FREE_DELIVERY_RADIUS_KM,
     )
@@ -153,7 +154,7 @@ def parse_weight_grams(value):
 
 
 def _configured_default_weight():
-    raw_value = getattr(settings, "INDIA_POST_DEFAULT_ITEM_WEIGHT_GRAMS", DEFAULT_ITEM_WEIGHT_GRAMS)
+    raw_value = get_shipping_setting("INDIA_POST_DEFAULT_ITEM_WEIGHT_GRAMS", DEFAULT_ITEM_WEIGHT_GRAMS)
     try:
         value = int(raw_value)
     except (TypeError, ValueError):
@@ -367,14 +368,14 @@ def _fallback_pincode_state(pincode):
 
 
 def calculate_cart_shipping(cart_items, address):
-    origin_pincode = str(getattr(settings, "INDIA_POST_ORIGIN_PINCODE", "") or "").strip()
+    origin_pincode = str(get_shipping_setting("INDIA_POST_ORIGIN_PINCODE", "") or "").strip()
     if not origin_pincode:
         raise IndiaPostShippingError("INDIA_POST_ORIGIN_PINCODE is not configured on the server.")
     destination_pincode = str(getattr(address, "postal_code", "") or "").strip()
     weight = calculate_cart_weight_grams(cart_items)
     free_delivery_radius_km = _configured_free_delivery_radius_km()
-    origin_latitude = getattr(settings, "INDIA_POST_ORIGIN_LATITUDE", "")
-    origin_longitude = getattr(settings, "INDIA_POST_ORIGIN_LONGITUDE", "")
+    origin_latitude = get_shipping_setting("INDIA_POST_ORIGIN_LATITUDE", "")
+    origin_longitude = get_shipping_setting("INDIA_POST_ORIGIN_LONGITUDE", "")
     destination_latitude = getattr(address, "latitude", None)
     destination_longitude = getattr(address, "longitude", None)
     distance_km = None
@@ -426,19 +427,20 @@ def calculate_cart_shipping(cart_items, address):
         )
         return quote
 
-    if (
-        getattr(settings, "SHIPPING_FULFILLMENT_PROVIDER", "prodinent") == "india_post"
-        and not getattr(settings, "INDIA_POST_DIRECT_TARIFF_ENABLED", False)
-    ):
+    provider = get_shipping_setting("SHIPPING_FULFILLMENT_PROVIDER", "prodinent")
+    direct_tariff_enabled = bool(get_shipping_setting("INDIA_POST_DIRECT_TARIFF_ENABLED", False))
+    if provider == "india_post" and not direct_tariff_enabled:
         raise IndiaPostShippingError(
             "Direct India Post Business Parcel pricing is not enabled. Contact the store before placing this order."
         )
 
-    if getattr(settings, "INDIA_POST_DIRECT_TARIFF_ENABLED", False):
+    # Do not mix India Post checkout pricing with orders still assigned to a
+    # different fulfilment provider while the direct integration is being staged.
+    if provider == "india_post":
         dimensions = {
-            "length_cm": getattr(settings, "INDIA_POST_PARCEL_LENGTH_CM", ""),
-            "width_cm": getattr(settings, "INDIA_POST_PARCEL_WIDTH_CM", ""),
-            "height_cm": getattr(settings, "INDIA_POST_PARCEL_HEIGHT_CM", ""),
+            "length_cm": get_shipping_setting("INDIA_POST_PARCEL_LENGTH_CM", ""),
+            "width_cm": get_shipping_setting("INDIA_POST_PARCEL_WIDTH_CM", ""),
+            "height_cm": get_shipping_setting("INDIA_POST_PARCEL_HEIGHT_CM", ""),
         }
         if not all(str(value or "").strip() for value in dimensions.values()):
             raise IndiaPostShippingError(
@@ -448,7 +450,7 @@ def calculate_cart_shipping(cart_items, address):
         from .india_post_tariff import IndiaPostTariffClient
 
         quote = IndiaPostTariffClient.calculate_quote(
-            service=getattr(settings, "INDIA_POST_TARIFF_SERVICE", ""),
+            service=get_shipping_setting("INDIA_POST_TARIFF_SERVICE", "business_parcel"),
             weight_grams=weight,
             source_pincode=origin_pincode,
             destination_pincode=destination_pincode,
@@ -470,7 +472,7 @@ def calculate_cart_shipping(cart_items, address):
         )
         return quote
 
-    origin_state = getattr(settings, "INDIA_POST_ORIGIN_STATE", "")
+    origin_state = get_shipping_setting("INDIA_POST_ORIGIN_STATE", "")
     destination_state = "" if origin_pincode == destination_pincode else lookup_pincode_state(destination_pincode)
     quote = calculate_india_post_charge(
         weight_grams=weight,
