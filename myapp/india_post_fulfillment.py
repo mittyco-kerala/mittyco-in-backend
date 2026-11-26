@@ -94,6 +94,11 @@ class IndiaPostDirectAPI:
             "/pincode-search",
             query={"pincode": pincode, "office-type": "post"},
         )
+        if isinstance(result, dict):
+            if result.get("success") is False:
+                message = str(result.get("message") or "India Post office search failed.")
+                raise IndiaPostFulfillmentError(message)
+            result = result.get("data")
         if not isinstance(result, list):
             raise IndiaPostFulfillmentError("India Post returned an invalid office list.")
         return [
