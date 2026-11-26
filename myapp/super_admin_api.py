@@ -581,13 +581,19 @@ class AdminIndiaPostBarcodeSeriesSerializer(serializers.ModelSerializer):
 
         # Keep already-used barcodes reserved even if an older series has no
         # saved allocation_start value.
-        for barcode in Order.objects.exclude(india_post_barcode="").values_list("india_post_barcode", flat=True):
-            if barcode.startswith(prefix) and barcode.endswith("IN"):
-                if any(
-                    first_number <= serial <= (last_number or 0)
-                    for serial in barcode_serial_candidates(barcode)
-                ):
-                    raise serializers.ValidationError({"first_number": "This range contains a barcode already assigned to an order."})
+        used_barcodes = (
+            Order.objects.filter(india_post_barcode__isnull=False)
+            .exclude(india_post_barcode="")
+            .values_list("india_post_barcode", flat=True)
+        )
+        for barcode in used_barcodes:
+            if not barcode or not barcode.startswith(prefix) or not barcode.endswith("IN"):
+                continue
+            if any(
+                first_number <= serial <= (last_number or 0)
+                for serial in barcode_serial_candidates(barcode)
+            ):
+                raise serializers.ValidationError({"first_number": "This range contains a barcode already assigned to an order."})
 
         candidate = IndiaPostBarcodeSeries(
             name=attrs.get("name", ""),
