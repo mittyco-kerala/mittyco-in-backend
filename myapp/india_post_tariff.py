@@ -219,7 +219,9 @@ class IndiaPostTariffClient:
         if data.get("success") is False or response.get("success") is False:
             raise IndiaPostTariffError("India Post could not calculate this parcel tariff.")
         try:
-            amount = Decimal(str(data["total_with_tax"]))
+            amount = Decimal(
+                str(data.get("total_with_tax", data.get("final_amount")))
+            )
         except (KeyError, InvalidOperation, TypeError, ValueError):
             raise IndiaPostTariffError(
                 "India Post response did not contain a valid total tariff."
@@ -229,7 +231,7 @@ class IndiaPostTariffClient:
 
         try:
             base_amount = Decimal(str(data.get("base_tariff", data.get("price", amount))))
-            tax_amount = Decimal(str(data.get("gst", 0)))
+            tax_amount = Decimal(str(data.get("gst", data.get("total_tax", 0))))
         except (InvalidOperation, TypeError, ValueError):
             raise IndiaPostTariffError("India Post returned invalid tariff details.") from None
         if not base_amount.is_finite() or not tax_amount.is_finite():
