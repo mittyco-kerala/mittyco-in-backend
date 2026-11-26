@@ -133,6 +133,7 @@ from .super_admin_api import (
     AdminCartViewSet,
     AdminCategoryViewSet,
     AdminColorViewSet,
+    AdminIndiaPostBarcodeSeriesViewSet,
     AdminCouponUsageViewSet,
     AdminCouponViewSet,
     AdminHeroBannerViewSet,
@@ -181,6 +182,7 @@ router.register(r'admin/manage/carts', AdminCartViewSet, basename='admin-manage-
 router.register(r'admin/manage/addresses', AdminAddressViewSet, basename='admin-manage-address')
 router.register(r'admin/manage/user-profiles', AdminUserProfileViewSet, basename='admin-manage-user-profile')
 router.register(r'admin/manage/orders', AdminOrderViewSet, basename='admin-manage-order')
+router.register(r'admin/manage/india-post-barcode-series', AdminIndiaPostBarcodeSeriesViewSet, basename='admin-manage-india-post-barcode-series')
 router.register(r'admin/manage/order-items', AdminOrderItemViewSet, basename='admin-manage-order-item')
 router.register(r'admin/manage/hero-banners', AdminHeroBannerViewSet, basename='admin-manage-hero-banner')
 router.register(r'admin/manage/trust-benefits', AdminTrustBenefitViewSet, basename='admin-manage-trust-benefit')

@@ -453,11 +453,52 @@ INDIA_POST_API_USERNAME = os.getenv("INDIA_POST_API_USERNAME", "").strip()
 INDIA_POST_API_PASSWORD = os.getenv("INDIA_POST_API_PASSWORD", "")
 INDIA_POST_API_TIMEOUT = float(os.getenv("INDIA_POST_API_TIMEOUT", "12"))
 INDIA_POST_TARIFF_SERVICE = os.getenv(
-    "INDIA_POST_TARIFF_SERVICE", ""
+    "INDIA_POST_TARIFF_SERVICE", "business_parcel"
 ).strip().lower()
 INDIA_POST_PARCEL_LENGTH_CM = os.getenv("INDIA_POST_PARCEL_LENGTH_CM", "").strip()
 INDIA_POST_PARCEL_WIDTH_CM = os.getenv("INDIA_POST_PARCEL_WIDTH_CM", "").strip()
 INDIA_POST_PARCEL_HEIGHT_CM = os.getenv("INDIA_POST_PARCEL_HEIGHT_CM", "").strip()
+INDIA_POST_SHAPE_OF_ARTICLE = os.getenv(
+    "INDIA_POST_SHAPE_OF_ARTICLE", "NROL"
+).strip().upper()
+
+# Fulfilment provider is selected per newly-created order. Keep the current
+# Prodinent behavior until an India Post barcode range and office are approved.
+SHIPPING_FULFILLMENT_PROVIDER = os.getenv(
+    "SHIPPING_FULFILLMENT_PROVIDER", "prodinent"
+).strip().lower()
+INDIA_POST_FULFILLMENT_ENABLED = os.getenv(
+    "INDIA_POST_FULFILLMENT_ENABLED", "false"
+).strip().lower() in {"1", "true", "yes", "on"}
+INDIA_POST_LIVE_BOOKING_ENABLED = os.getenv(
+    "INDIA_POST_LIVE_BOOKING_ENABLED", "false"
+).strip().lower() in {"1", "true", "yes", "on"}
+INDIA_POST_AUTO_BOOKING_ENABLED = os.getenv(
+    "INDIA_POST_AUTO_BOOKING_ENABLED", "false"
+).strip().lower() in {"1", "true", "yes", "on"}
+INDIA_POST_BULK_CUSTOMER_ID = os.getenv(
+    "INDIA_POST_BULK_CUSTOMER_ID", ""
+).strip()
+INDIA_POST_SENDER_NAME = os.getenv("INDIA_POST_SENDER_NAME", "").strip()
+INDIA_POST_SENDER_COMPANY = os.getenv("INDIA_POST_SENDER_COMPANY", "").strip()
+INDIA_POST_SENDER_ADDRESS_LINE1 = os.getenv(
+    "INDIA_POST_SENDER_ADDRESS_LINE1", ""
+).strip()
+INDIA_POST_SENDER_ADDRESS_LINE2 = os.getenv(
+    "INDIA_POST_SENDER_ADDRESS_LINE2", ""
+).strip()
+INDIA_POST_SENDER_ADDRESS_LINE3 = os.getenv(
+    "INDIA_POST_SENDER_ADDRESS_LINE3", ""
+).strip()
+INDIA_POST_SENDER_CITY = os.getenv("INDIA_POST_SENDER_CITY", "").strip()
+INDIA_POST_SENDER_STATE = os.getenv("INDIA_POST_SENDER_STATE", "").strip()
+INDIA_POST_SENDER_PINCODE = os.getenv(
+    "INDIA_POST_SENDER_PINCODE", INDIA_POST_ORIGIN_PINCODE
+).strip()
+INDIA_POST_SENDER_MOBILE = os.getenv("INDIA_POST_SENDER_MOBILE", "").strip()
+INDIA_POST_LABEL_TRANSMISSION_MODE = os.getenv(
+    "INDIA_POST_LABEL_TRANSMISSION_MODE", "S"
+).strip().upper()
 
 # Legacy Stripe settings remain available for historical checkout records.
 

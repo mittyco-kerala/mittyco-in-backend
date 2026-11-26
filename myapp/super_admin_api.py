@@ -54,6 +54,7 @@ from .models import (
     UserProfile,
     Wishlist,
     WelcomeBonus,
+    IndiaPostBarcodeSeries,
 )
 from .permissions import IsSuperAdmin
 from .catalog_pricing import get_product_price_values
@@ -66,6 +67,13 @@ from .prodinent import (
     book_local_order_in_prodinent,
     refresh_local_order_tracking,
     sync_order_to_prodinent,
+)
+from .india_post_fulfillment import (
+    IndiaPostDirectAPI,
+    IndiaPostFulfillmentError,
+    book_local_order_in_india_post,
+    download_local_order_india_post_label,
+    refresh_local_order_india_post_tracking,
 )
 
 
@@ -476,6 +484,127 @@ class AdminModelViewSet(viewsets.ModelViewSet):
         with transaction.atomic():
             self._audit("delete", instance)
             instance.delete()
+
+
+class AdminIndiaPostBarcodeSeriesSerializer(serializers.ModelSerializer):
+    first_number = serializers.IntegerField(write_only=True, required=False, min_value=100_000_000, max_value=999_999_999)
+    remaining_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = IndiaPostBarcodeSeries
+        fields = (
+            "id",
+            "name",
+            "article_type",
+            "contract_id",
+            "barcode_prefix",
+            "allocation_start",
+            "first_number",
+            "next_number",
+            "last_number",
+            "booking_office_id",
+            "booking_office_name",
+            "dropoff_pincode",
+            "is_active",
+            "remaining_count",
+            "created_at",
+            "updated_at",
+        )
+        read_only_fields = (
+            "id",
+            "article_type",
+            "allocation_start",
+            "next_number",
+            "remaining_count",
+            "created_at",
+            "updated_at",
+        )
+
+    def get_remaining_count(self, instance):
+        return max(instance.last_number - instance.next_number + 1, 0)
+
+    def validate_barcode_prefix(self, value):
+        return value.strip().upper()
+
+    def validate(self, attrs):
+        if self.instance:
+            forbidden = set(attrs) - {"name", "is_active"}
+            if forbidden:
+                raise serializers.ValidationError(
+                    "Allocated barcode details and the next unused number cannot be edited."
+                )
+            if attrs.get("is_active") and self.instance.next_number > self.instance.last_number:
+                raise serializers.ValidationError({"is_active": "This barcode series is exhausted."})
+            return attrs
+
+        first_number = attrs.get("first_number")
+        if first_number is None:
+            raise serializers.ValidationError({"first_number": "Enter the first number from the allocated barcode range."})
+        last_number = attrs.get("last_number")
+        prefix = attrs.get("barcode_prefix", "")
+        if last_number is not None and first_number > last_number:
+            raise serializers.ValidationError({"last_number": "The last number must be greater than or equal to the first number."})
+
+        existing = IndiaPostBarcodeSeries.objects.filter(barcode_prefix=prefix).only(
+            "allocation_start", "next_number", "last_number"
+        )
+        for series in existing:
+            allocated_start = series.allocation_start or series.next_number
+            if last_number is not None and first_number <= series.last_number and allocated_start <= last_number:
+                raise serializers.ValidationError({"first_number": "This number range overlaps another saved series with the same prefix."})
+
+        # Keep already-used barcodes reserved even if an older series has no
+        # saved allocation_start value.
+        for barcode in Order.objects.exclude(india_post_barcode="").values_list("india_post_barcode", flat=True):
+            if barcode.startswith(prefix) and barcode.endswith("IN"):
+                serial = barcode[2:-2]
+                if serial.isdigit() and first_number <= int(serial) <= (last_number or 0):
+                    raise serializers.ValidationError({"first_number": "This range contains a barcode already assigned to an order."})
+
+        candidate = IndiaPostBarcodeSeries(
+            name=attrs.get("name", ""),
+            article_type="BP",
+            contract_id=attrs.get("contract_id", ""),
+            barcode_prefix=prefix,
+            allocation_start=first_number,
+            next_number=first_number,
+            last_number=last_number or 0,
+            booking_office_id=attrs.get("booking_office_id", ""),
+            booking_office_name=attrs.get("booking_office_name", ""),
+            dropoff_pincode=attrs.get("dropoff_pincode", ""),
+            is_active=attrs.get("is_active", True),
+        )
+        try:
+            candidate.full_clean()
+        except DjangoValidationError as error:
+            raise serializers.ValidationError(error.message_dict) from error
+        return attrs
+
+    def create(self, validated_data):
+        first_number = validated_data.pop("first_number")
+        instance = IndiaPostBarcodeSeries(
+            **validated_data,
+            article_type="BP",
+            allocation_start=first_number,
+            next_number=first_number,
+        )
+        instance.full_clean()
+        instance.save()
+        return instance
+
+    def update(self, instance, validated_data):
+        for field, value in validated_data.items():
+            setattr(instance, field, value)
+        instance.save(update_fields=(*validated_data.keys(), "updated_at"))
+        return instance
+
+
+class AdminIndiaPostBarcodeSeriesViewSet(AdminModelViewSet):
+    queryset = IndiaPostBarcodeSeries.objects.all().order_by("created_at", "id")
+    serializer_class = AdminIndiaPostBarcodeSeriesSerializer
+    search_fields = ("name", "contract_id", "barcode_prefix", "booking_office_name")
+    ordering_fields = ("created_at", "name", "is_active")
+    http_method_names = ("get", "post", "patch", "head", "options")
 
 
 class AdminUserViewSet(AdminModelViewSet):
@@ -1000,7 +1129,26 @@ class AdminOrderViewSet(AdminModelViewSet):
             class Meta:
                 model = Order
                 fields = "__all__"
-                read_only_fields = ("id", "created_at", "updated_at")
+                read_only_fields = (
+                    "id",
+                    "created_at",
+                    "updated_at",
+                    "fulfillment_provider",
+                    "shipping_quote",
+                    "india_post_barcode",
+                    "india_post_booking_status",
+                    "india_post_booking_reference",
+                    "india_post_contract_id",
+                    "india_post_booking_office_id",
+                    "india_post_booking_office_name",
+                    "india_post_dropoff_pincode",
+                    "india_post_booking_attempted_at",
+                    "india_post_booked_at",
+                    "india_post_tracking_status",
+                    "india_post_tracking_events",
+                    "india_post_tracking_last_synced_at",
+                    "india_post_last_error",
+                )
 
         return OrderAdminSerializer
 
@@ -1015,6 +1163,8 @@ class AdminOrderViewSet(AdminModelViewSet):
                 status=409,
             )
         order = self.get_object()
+        if order.fulfillment_provider != "prodinent":
+            return Response({"message": "This order is assigned to India Post."}, status=409)
         sync_order_to_prodinent(order.id)
         order.refresh_from_db()
         if not order.prodinent_order_id:
@@ -1038,6 +1188,8 @@ class AdminOrderViewSet(AdminModelViewSet):
                 status=409,
             )
         order = self.get_object()
+        if order.fulfillment_provider != "prodinent":
+            return Response({"message": "This order is assigned to India Post."}, status=409)
         if not order.prodinent_order_id:
             return Response(
                 {"message": "Create the Prodinent order before booking shipment."},
@@ -1066,6 +1218,8 @@ class AdminOrderViewSet(AdminModelViewSet):
                 status=status.HTTP_409_CONFLICT,
             )
         order = self.get_object()
+        if order.fulfillment_provider != "prodinent":
+            return Response({"message": "This order is assigned to India Post."}, status=409)
         if not order.prodinent_order_id:
             return Response(
                 {"message": "Create the Prodinent order before assigning a barcode."},
@@ -1086,6 +1240,8 @@ class AdminOrderViewSet(AdminModelViewSet):
     @action(detail=True, methods=("get",), url_path="prodinent-label")
     def prodinent_label(self, request, pk=None):
         order = self.get_object()
+        if order.fulfillment_provider != "prodinent":
+            return Response({"message": "This order is assigned to India Post."}, status=409)
         if not order.prodinent_order_id:
             return Response(
                 {"message": "Create the Prodinent order before downloading a label."},
@@ -1113,6 +1269,8 @@ class AdminOrderViewSet(AdminModelViewSet):
                 status=status.HTTP_409_CONFLICT,
             )
         order = self.get_object()
+        if order.fulfillment_provider != "prodinent":
+            return Response({"message": "This order is assigned to India Post."}, status=409)
         if not order.prodinent_order_id:
             return Response(
                 {"message": "Create the Prodinent order before tracking it."},
@@ -1129,6 +1287,60 @@ class AdminOrderViewSet(AdminModelViewSet):
                 status=status.HTTP_502_BAD_GATEWAY,
             )
         return Response(self.get_serializer(order).data)
+
+    @action(detail=False, methods=("get",), url_path="india-post-offices")
+    def india_post_offices(self, request):
+        pincode = str(request.query_params.get("pincode") or "").strip()
+        try:
+            offices = IndiaPostDirectAPI.search_post_offices(pincode)
+        except IndiaPostFulfillmentError as error:
+            return Response({"message": str(error)}, status=status.HTTP_502_BAD_GATEWAY)
+        return Response({"offices": offices})
+
+    @action(detail=True, methods=("post",), url_path="india-post-book")
+    def india_post_book(self, request, pk=None):
+        if not (
+            getattr(settings, "INDIA_POST_FULFILLMENT_ENABLED", False)
+            and getattr(settings, "INDIA_POST_LIVE_BOOKING_ENABLED", False)
+        ):
+            return Response({"message": "India Post live booking is disabled."}, status=409)
+        order = self.get_object()
+        try:
+            book_local_order_in_india_post(order.id)
+        except IndiaPostFulfillmentError as error:
+            code = status.HTTP_409_CONFLICT if error.status_code is None or error.outcome_unknown else status.HTTP_502_BAD_GATEWAY
+            order.refresh_from_db()
+            return Response(
+                {
+                    "message": str(error),
+                    "india_post_booking_status": order.india_post_booking_status,
+                    "india_post_barcode": order.india_post_barcode,
+                },
+                status=code,
+            )
+        order.refresh_from_db()
+        return Response(self.get_serializer(order).data)
+
+    @action(detail=True, methods=("post",), url_path="india-post-track")
+    def india_post_track(self, request, pk=None):
+        order = self.get_object()
+        try:
+            refresh_local_order_india_post_tracking(order.id)
+        except IndiaPostFulfillmentError as error:
+            return Response({"message": str(error)}, status=status.HTTP_502_BAD_GATEWAY)
+        order.refresh_from_db()
+        return Response(self.get_serializer(order).data)
+
+    @action(detail=True, methods=("get",), url_path="india-post-label")
+    def india_post_label(self, request, pk=None):
+        order = self.get_object()
+        try:
+            pdf = download_local_order_india_post_label(order.id)
+        except IndiaPostFulfillmentError as error:
+            return Response({"message": str(error)}, status=status.HTTP_502_BAD_GATEWAY)
+        response = HttpResponse(pdf, content_type="application/pdf")
+        response["Content-Disposition"] = f'attachment; filename="ORD-{order.id:06d}-india-post-label.pdf"'
+        return response
 
 
 class AdminOrderItemViewSet(AdminModelViewSet):

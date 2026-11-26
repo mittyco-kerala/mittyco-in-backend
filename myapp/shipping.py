@@ -426,6 +426,14 @@ def calculate_cart_shipping(cart_items, address):
         )
         return quote
 
+    if (
+        getattr(settings, "SHIPPING_FULFILLMENT_PROVIDER", "prodinent") == "india_post"
+        and not getattr(settings, "INDIA_POST_DIRECT_TARIFF_ENABLED", False)
+    ):
+        raise IndiaPostShippingError(
+            "Direct India Post Business Parcel pricing is not enabled. Contact the store before placing this order."
+        )
+
     if getattr(settings, "INDIA_POST_DIRECT_TARIFF_ENABLED", False):
         dimensions = {
             "length_cm": getattr(settings, "INDIA_POST_PARCEL_LENGTH_CM", ""),

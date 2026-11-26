@@ -1124,6 +1124,36 @@ class OrderSerializer(
 
             "prodinent_label_available",
 
+            "fulfillment_provider",
+
+            "shipping_quote",
+
+            "india_post_barcode",
+
+            "india_post_booking_status",
+
+            "india_post_booking_reference",
+
+            "india_post_contract_id",
+
+            "india_post_booking_office_id",
+
+            "india_post_booking_office_name",
+
+            "india_post_dropoff_pincode",
+
+            "india_post_booking_attempted_at",
+
+            "india_post_booked_at",
+
+            "india_post_tracking_status",
+
+            "india_post_tracking_events",
+
+            "india_post_tracking_last_synced_at",
+
+            "india_post_last_error",
+
         ]
 
         read_only_fields = (
@@ -1132,6 +1162,36 @@ class OrderSerializer(
             "prodinent_article_id",
             "prodinent_tracking_link",
             "prodinent_label_available",
+
+            "fulfillment_provider",
+
+            "shipping_quote",
+
+            "india_post_barcode",
+
+            "india_post_booking_status",
+
+            "india_post_booking_reference",
+
+            "india_post_contract_id",
+
+            "india_post_booking_office_id",
+
+            "india_post_booking_office_name",
+
+            "india_post_dropoff_pincode",
+
+            "india_post_booking_attempted_at",
+
+            "india_post_booked_at",
+
+            "india_post_tracking_status",
+
+            "india_post_tracking_events",
+
+            "india_post_tracking_last_synced_at",
+
+            "india_post_last_error",
         )
 class AdminOrderSerializer(
     serializers.ModelSerializer

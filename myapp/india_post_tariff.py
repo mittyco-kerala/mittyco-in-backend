@@ -31,9 +31,13 @@ class IndiaPostTariffClient:
     def _base_url(cls):
         base_url = str(getattr(settings, "INDIA_POST_API_BASE_URL", "") or "").strip().rstrip("/")
         parsed = urlsplit(base_url)
-        if parsed.scheme != "https" or not parsed.netloc:
+        if (
+            parsed.scheme != "https"
+            or parsed.hostname != "app.indiapost.gov.in"
+            or parsed.path.rstrip("/") != "/beextcustomer/v1"
+        ):
             raise IndiaPostTariffError(
-                "India Post production API URL is not configured correctly."
+                "India Post production API URL must use the approved DOP host and base path."
             )
         return base_url
 

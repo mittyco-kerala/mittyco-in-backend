@@ -1,3 +1,4 @@
+import re
 import secrets
 
 from django.db import models, transaction
@@ -876,6 +877,11 @@ class Order(models.Model):
         ("WHATSAPP", "WhatsApp"),
     )
 
+    FULFILLMENT_PROVIDER_CHOICES = (
+        ("prodinent", "Prodinent"),
+        ("india_post", "India Post API"),
+    )
+
     user = models.ForeignKey(
         User,
         on_delete=models.CASCADE
@@ -904,6 +910,8 @@ class Order(models.Model):
         decimal_places=2,
         default=0
     )
+
+    shipping_quote = models.JSONField(default=dict, blank=True)
 
     total_amount = models.DecimalField(
         max_digits=10,
@@ -936,6 +944,28 @@ class Order(models.Model):
         default="Pending"
     )
 
+    fulfillment_provider = models.CharField(
+        max_length=20,
+        choices=FULFILLMENT_PROVIDER_CHOICES,
+        default="prodinent",
+    )
+
+    india_post_barcode = models.CharField(
+        max_length=13, blank=True, null=True, unique=True
+    )
+    india_post_booking_status = models.CharField(max_length=32, blank=True)
+    india_post_booking_reference = models.CharField(max_length=80, blank=True)
+    india_post_contract_id = models.CharField(max_length=8, blank=True)
+    india_post_booking_office_id = models.CharField(max_length=8, blank=True)
+    india_post_booking_office_name = models.CharField(max_length=100, blank=True)
+    india_post_dropoff_pincode = models.CharField(max_length=6, blank=True)
+    india_post_booking_attempted_at = models.DateTimeField(blank=True, null=True)
+    india_post_booked_at = models.DateTimeField(blank=True, null=True)
+    india_post_tracking_status = models.CharField(max_length=100, blank=True)
+    india_post_tracking_events = models.JSONField(default=list, blank=True)
+    india_post_tracking_last_synced_at = models.DateTimeField(blank=True, null=True)
+    india_post_last_error = models.TextField(blank=True)
+
     # Prodinent shipment state is kept separately from the storefront order
     # state so a provider retry or booking failure cannot corrupt payment state.
     prodinent_order_id = models.CharField(max_length=80, blank=True, null=True)
@@ -962,6 +992,57 @@ class Order(models.Model):
 
     def __str__(self):
         return f"ORD-{self.id:06d}"
+
+
+class IndiaPostBarcodeSeries(models.Model):
+    """An officially allocated DOP barcode block used for BP bookings."""
+
+    name = models.CharField(max_length=80, unique=True)
+    article_type = models.CharField(max_length=2, default="BP")
+    contract_id = models.CharField(max_length=8)
+    barcode_prefix = models.CharField(max_length=2)
+    allocation_start = models.PositiveIntegerField(null=True, blank=True)
+    next_number = models.PositiveIntegerField()
+    last_number = models.PositiveIntegerField()
+    booking_office_id = models.CharField(max_length=8)
+    booking_office_name = models.CharField(max_length=100)
+    dropoff_pincode = models.CharField(max_length=6)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ("created_at", "id")
+
+    def clean(self):
+        super().clean()
+        errors = {}
+        if self.article_type != "BP":
+            errors["article_type"] = "Only the approved Business Parcel (BP) series is supported."
+        if not self.contract_id.isdigit() or len(self.contract_id) != 8:
+            errors["contract_id"] = "Enter the 8-digit India Post BP contract ID."
+        if not re.fullmatch(r"[A-Z]{2}", self.barcode_prefix or ""):
+            errors["barcode_prefix"] = "Use the two uppercase letters allocated by India Post."
+        if not (100_000_000 <= self.next_number <= 1_000_000_000):
+            errors["next_number"] = "Enter a valid unused 9-digit barcode range."
+        if self.allocation_start is not None and not (
+            100_000_000 <= self.allocation_start <= self.last_number <= 999_999_999
+            and self.allocation_start <= self.next_number
+        ):
+            errors["allocation_start"] = "Enter a valid India Post allocated barcode range."
+        elif self.allocation_start is None and not (
+            100_000_000 <= self.next_number <= self.last_number <= 999_999_999
+        ):
+            errors["next_number"] = "Enter a valid unused 9-digit barcode range."
+        if not self.booking_office_id.isdigit() or len(self.booking_office_id) != 8:
+            errors["booking_office_id"] = "Enter the 8-digit DOP post office ID."
+        if not self.dropoff_pincode.isdigit() or len(self.dropoff_pincode) != 6:
+            errors["dropoff_pincode"] = "Enter the 6-digit drop-off PIN code."
+        if errors:
+            raise ValidationError(errors)
+
+    def __str__(self):
+        return f"{self.name} ({self.barcode_prefix}, BP)"
 
 
 class Invoice(models.Model):

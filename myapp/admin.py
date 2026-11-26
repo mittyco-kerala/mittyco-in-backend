@@ -97,6 +97,24 @@ class RegionAdmin(admin.ModelAdmin):
     list_display = ("name",)
     search_fields = ("name",)
 
+
+@admin.register(IndiaPostBarcodeSeries)
+class IndiaPostBarcodeSeriesAdmin(admin.ModelAdmin):
+    list_display = (
+        "name",
+        "article_type",
+        "contract_id",
+        "barcode_prefix",
+        "allocation_start",
+        "next_number",
+        "last_number",
+        "booking_office_name",
+        "is_active",
+    )
+    list_filter = ("article_type", "is_active")
+    search_fields = ("name", "contract_id", "barcode_prefix", "booking_office_name")
+    readonly_fields = ("created_at", "updated_at")
+
 class ProductImageInline( nested_admin.NestedTabularInline ):
 
     model = ProductImage
